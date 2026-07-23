@@ -20,7 +20,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
-  const { persona, setPersonaId } = useApp();
+  const { persona, setPersonaId, simulatedToday, setSimulatedToday } = useApp();
   const isFinance = persona.role === 'FINANCE';
 
   const items: NavItem[] = [
@@ -53,6 +53,18 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="border-b border-white/10 px-5 py-4">
+        <label className="mb-1 block text-xs uppercase tracking-wide text-white/50">
+          Simulated today (testing)
+        </label>
+        <input
+          type="date"
+          value={simulatedToday}
+          onChange={(e) => setSimulatedToday(e.target.value)}
+          className="w-full rounded-md border border-white/20 bg-brand-navy-light px-2 py-1.5 text-sm text-white focus:border-brand-gold focus:outline-none [color-scheme:dark]"
+        />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">

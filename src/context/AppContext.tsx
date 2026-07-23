@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Debtor, Persona, ReferenceItem } from '../types';
 import { PERSONAS } from '../types';
 import { DEBTORS_SEED, DESCRIPTION_SEED, NATURE_SEED } from '../data/seed';
+import { todayIso } from '../utils/aging';
 
 const STORAGE_KEY = 'debt-management-module-v1';
 
@@ -11,12 +12,13 @@ interface PersistedState {
   descriptionList: ReferenceItem[];
   debtors: Debtor[];
   personaId: string;
+  simulatedToday: string;
 }
 
 function loadInitial(): PersistedState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as PersistedState;
+    if (raw) return { simulatedToday: todayIso(), ...JSON.parse(raw) } as PersistedState;
   } catch {
     // ignore corrupt storage
   }
@@ -25,6 +27,7 @@ function loadInitial(): PersistedState {
     descriptionList: DESCRIPTION_SEED,
     debtors: DEBTORS_SEED,
     personaId: 'FINANCE',
+    simulatedToday: todayIso(),
   };
 }
 
@@ -34,6 +37,8 @@ interface AppContextValue {
   natureList: ReferenceItem[];
   descriptionList: ReferenceItem[];
   debtors: Debtor[];
+  simulatedToday: string;
+  setSimulatedToday: (isoDate: string) => void;
   addReferenceItem: (list: 'nature' | 'description', name: string) => void;
   toggleReferenceItem: (list: 'nature' | 'description', id: string) => void;
   addDebtor: (debtor: Omit<Debtor, 'id'>) => void;
@@ -54,11 +59,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     initial.descriptionList,
   );
   const [debtors, setDebtors] = useState<Debtor[]>(initial.debtors);
+  const [simulatedToday, setSimulatedToday] = useState<string>(initial.simulatedToday);
 
   useEffect(() => {
-    const state: PersistedState = { natureList, descriptionList, debtors, personaId };
+    const state: PersistedState = {
+      natureList,
+      descriptionList,
+      debtors,
+      personaId,
+      simulatedToday,
+    };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [natureList, descriptionList, debtors, personaId]);
+  }, [natureList, descriptionList, debtors, personaId, simulatedToday]);
 
   const persona = useMemo(
     () => PERSONAS.find((p) => p.id === personaId) ?? PERSONAS[PERSONAS.length - 1],
@@ -99,6 +111,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     natureList: sortAlpha(natureList),
     descriptionList: sortAlpha(descriptionList),
     debtors,
+    simulatedToday,
+    setSimulatedToday,
     addReferenceItem,
     toggleReferenceItem,
     addDebtor,
