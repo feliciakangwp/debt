@@ -49,7 +49,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
           onChange={(e) => setPersonaId(e.target.value)}
         >
           {PERSONAS.map((p) => (
-            <option key={p.id} value={p.id} className="text-black">
+            <option key={p.id} value={p.id} className="bg-brand-navy-light text-white">
               {p.label}
             </option>
           ))}
