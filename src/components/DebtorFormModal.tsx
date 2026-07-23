@@ -251,6 +251,14 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
                         onChange={(e) => updateEntry(entry.id, { requiredPaidDate: e.target.value })}
                         className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
                       />
+                      <button
+                        type="button"
+                        onClick={() => updateEntry(entry.id, { requiredPaidDate: simulatedToday })}
+                        title="Set to today's date"
+                        className="shrink-0 rounded-md border border-slate-300 px-2 py-1.5 text-xs font-semibold text-slate-600 hover:bg-brand-navy hover:text-white"
+                      >
+                        Today
+                      </button>
                       {arEntries.length > 1 && (
                         <button
                           type="button"

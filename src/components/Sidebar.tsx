@@ -1,5 +1,6 @@
 import { useApp } from '../context/AppContext';
 import { PERSONAS } from '../types';
+import { todayIso } from '../utils/aging';
 
 export type PageKey =
   | 'nature'
@@ -59,12 +60,22 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         <label className="mb-1 block text-xs uppercase tracking-wide text-white/50">
           Simulated today (testing)
         </label>
-        <input
-          type="date"
-          value={simulatedToday}
-          onChange={(e) => setSimulatedToday(e.target.value)}
-          className="w-full rounded-md border border-white/20 bg-brand-navy-light px-2 py-1.5 text-sm text-white focus:border-brand-gold focus:outline-none [color-scheme:dark]"
-        />
+        <div className="flex items-center gap-1.5">
+          <input
+            type="date"
+            value={simulatedToday}
+            onChange={(e) => setSimulatedToday(e.target.value)}
+            className="min-w-0 flex-1 rounded-md border border-white/20 bg-brand-navy-light px-2 py-1.5 text-sm text-white focus:border-brand-gold focus:outline-none [color-scheme:dark]"
+          />
+          <button
+            type="button"
+            onClick={() => setSimulatedToday(todayIso())}
+            title="Reset to today's actual date"
+            className="shrink-0 rounded-md border border-white/20 px-2 py-1.5 text-xs font-semibold text-white/85 hover:bg-brand-gold hover:text-brand-navy"
+          >
+            Today
+          </button>
+        </div>
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
