@@ -33,7 +33,8 @@ function monthsElapsed(from: Date, to: Date): number {
 /**
  * Places a single amount into the correct aging bucket by comparing the
  * required paid date against today. If today hasn't passed the required paid
- * date yet, the whole amount sits under "AR Not in Arrears".
+ * date yet (or no due date has been set at all), the whole amount sits under
+ * "AR Not in Arrears".
  */
 export function computeAgingBuckets(
   amount: number,
@@ -41,6 +42,10 @@ export function computeAgingBuckets(
   today: string,
 ): AgingBuckets {
   const buckets = emptyBuckets();
+  if (!requiredPaidDate) {
+    buckets.notInArrears = amount;
+    return buckets;
+  }
   const due = parseDate(requiredPaidDate);
   const now = parseDate(today);
 

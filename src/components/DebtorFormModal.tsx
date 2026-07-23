@@ -47,16 +47,27 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
   const [descriptionId, setDescriptionId] = useState(
     editDebtor?.descriptionId ?? activeDescription[0]?.id ?? '',
   );
-  const [arEntries, setArEntries] = useState<AREntry[]>(() => initialEntries(editDebtor));
+  const [initialEntriesSnapshot] = useState<AREntry[]>(() => initialEntries(editDebtor));
+  const [arEntries, setArEntries] = useState<AREntry[]>(initialEntriesSnapshot);
   const [reasonNonRecovery, setReasonNonRecovery] = useState(editDebtor?.reasonNonRecovery ?? '');
   const [recoverySteps, setRecoverySteps] = useState(editDebtor?.recoverySteps ?? '');
+
+  // A legacy record (manually distributed bucket amounts, no due date at all)
+  // that the user hasn't touched the amounts/dates on yet: editing an
+  // unrelated field like the reason text should still be saveable without
+  // forcing a Required Paid Date, and without collapsing its original
+  // per-bucket distribution into a single lump sum.
+  const isPureLegacyEdit =
+    isEditing && !(editDebtor.arEntries && editDebtor.arEntries.length > 0) && !editDebtor.requiredPaidDate;
+  const entriesChanged = JSON.stringify(arEntries) !== JSON.stringify(initialEntriesSnapshot);
+  const preserveLegacyBuckets = isPureLegacyEdit && !entriesChanged;
 
   const canSave =
     name.trim() !== '' &&
     natureId !== '' &&
     descriptionId !== '' &&
-    arEntries.length > 0 &&
-    arEntries.every((e) => e.requiredPaidDate !== '');
+    (isEditing ||
+      (arEntries.length > 0 && arEntries.every((e) => e.requiredPaidDate !== '')));
 
   const addEntry = () => {
     setArEntries((prev) => [...prev, { id: makeEntryId(), amount: 0, requiredPaidDate: '' }]);
@@ -70,35 +81,55 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
     setArEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   };
 
-  const validEntries = arEntries.filter((e) => e.requiredPaidDate !== '');
-  const overallSummary =
-    validEntries.length > 0
-      ? summarizeBuckets(computeAgingBucketsForEntries(validEntries, simulatedToday))
-      : null;
+  const overallSummary = preserveLegacyBuckets
+    ? null
+    : summarizeBuckets(computeAgingBucketsForEntries(arEntries, simulatedToday));
+
+  const legacyDistributionSummary = isPureLegacyEdit
+    ? summarizeBuckets({
+        notInArrears: editDebtor.notInArrears,
+        arrears6m: editDebtor.arrears6m,
+        arrears6to12m: editDebtor.arrears6to12m,
+        arrears1to2y: editDebtor.arrears1to2y,
+        arrears2to3y: editDebtor.arrears2to3y,
+        arrears3to4y: editDebtor.arrears3to4y,
+        arrears4to5y: editDebtor.arrears4to5y,
+        arrears5yPlus: editDebtor.arrears5yPlus,
+      })
+    : null;
 
   const handleSave = () => {
     if (!canSave) return;
-    const payload = {
+    const baseFields = {
       branch,
       name: name.trim(),
       natureId,
       descriptionId,
-      notInArrears: 0,
-      arrears6m: 0,
-      arrears6to12m: 0,
-      arrears1to2y: 0,
-      arrears2to3y: 0,
-      arrears3to4y: 0,
-      arrears4to5y: 0,
-      arrears5yPlus: 0,
       reasonNonRecovery,
       recoverySteps,
-      arEntries,
-      requiredPaidDate: undefined,
-      totalARAmount: undefined,
     };
-    if (isEditing) updateDebtor(editDebtor.id, payload);
-    else addDebtor(payload);
+
+    if (preserveLegacyBuckets) {
+      // Nothing about the aging amounts changed; only update the editable
+      // metadata and leave the original bucket distribution untouched.
+      updateDebtor(editDebtor.id, baseFields);
+    } else {
+      const dynamicFields = {
+        notInArrears: 0,
+        arrears6m: 0,
+        arrears6to12m: 0,
+        arrears1to2y: 0,
+        arrears2to3y: 0,
+        arrears3to4y: 0,
+        arrears4to5y: 0,
+        arrears5yPlus: 0,
+        arEntries,
+        requiredPaidDate: undefined,
+        totalARAmount: undefined,
+      };
+      if (isEditing) updateDebtor(editDebtor.id, { ...baseFields, ...dynamicFields });
+      else addDebtor({ ...baseFields, ...dynamicFields });
+    }
     onClose();
   };
 
@@ -191,11 +222,20 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
               </button>
             </div>
 
+            {preserveLegacyBuckets && (
+              <p className="mb-2 text-xs text-slate-500">
+                Current distribution:{' '}
+                <span className="font-semibold text-brand-navy">{legacyDistributionSummary}</span>
+                . Editing the amount or setting a Required Paid Date below will replace this with
+                automatic aging.
+              </p>
+            )}
+
             <div className="space-y-2">
               {arEntries.map((entry) => {
-                const rowLabel = entry.requiredPaidDate
-                  ? bucketLabel(computeAgingBuckets(entry.amount, entry.requiredPaidDate, simulatedToday))
-                  : null;
+                const rowLabel = preserveLegacyBuckets
+                  ? null
+                  : bucketLabel(computeAgingBuckets(entry.amount, entry.requiredPaidDate, simulatedToday));
                 return (
                   <div key={entry.id} className="rounded-md border border-slate-200 p-2">
                     <div className="flex items-center gap-2">
@@ -256,15 +296,9 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
           </div>
 
           <p className="col-span-2 text-xs text-slate-400">
-            {isEditing && !editDebtor.arEntries?.length && !editDebtor.requiredPaidDate && (
-              <>
-                This entry was created with manually entered aging amounts and has no Required
-                Paid Date yet — pick one below to switch it over to automatic aging.{' '}
-              </>
-            )}
             Each amount is placed into its own aging column by comparing its Required Paid Date to
             today's date ({simulatedToday}), and will keep shifting live if the simulated date
-            changes.
+            changes. An amount with no Required Paid Date is treated as AR Not in Arrears.
             {overallSummary && (
               <>
                 {' '}
