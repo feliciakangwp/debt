@@ -6,18 +6,20 @@ import { NewDebtorModal } from '../components/NewDebtorModal';
 import { formatCurrency } from '../utils/format';
 import { totalAR, totalInArrears } from '../types';
 import type { Debtor } from '../types';
+import { resolveDebtorBuckets } from '../utils/aging';
 
 export function DebtorsPage() {
-  const { persona, debtors, natureList, descriptionList } = useApp();
+  const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
   const [showNew, setShowNew] = useState(false);
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const visibleRows = useMemo(() => {
-    if (persona.role === 'FINANCE') return debtors;
-    return debtors.filter((d) => d.branch === persona.branch);
-  }, [debtors, persona]);
+    const scoped =
+      persona.role === 'FINANCE' ? debtors : debtors.filter((d) => d.branch === persona.branch);
+    return scoped.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
+  }, [debtors, persona, simulatedToday]);
 
   const canCreate = persona.role === 'BRANCH_REP';
 

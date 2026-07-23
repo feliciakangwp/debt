@@ -54,6 +54,11 @@ export interface Debtor {
   arrears5yPlus: number;
   reasonNonRecovery: string;
   recoverySteps: string;
+  /** Set only for entries created via the aging calculator form. When present,
+   * the bucket fields above are ignored in favor of a live calculation from
+   * totalARAmount + requiredPaidDate against the current simulated date. */
+  requiredPaidDate?: string;
+  totalARAmount?: number;
 }
 
 export const ARREARS_BUCKET_KEYS = [

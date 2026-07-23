@@ -5,21 +5,25 @@ import type { ColumnDef } from '../components/DataTable';
 import { aggregateDebtors, aggregatedTotalAR, aggregatedTotalInArrears } from '../utils/aggregate';
 import type { AggregatedRow } from '../utils/aggregate';
 import { formatCurrency } from '../utils/format';
+import { resolveDebtorBuckets } from '../utils/aging';
 
 interface ArrearsSummaryPageProps {
   financeView?: boolean;
 }
 
 export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPageProps) {
-  const { persona, debtors, natureList, descriptionList } = useApp();
+  const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const scopedDebtors = useMemo(() => {
-    if (financeView || persona.role === 'FINANCE') return debtors;
-    return debtors.filter((d) => d.branch === persona.branch);
-  }, [debtors, persona, financeView]);
+    const base =
+      financeView || persona.role === 'FINANCE'
+        ? debtors
+        : debtors.filter((d) => d.branch === persona.branch);
+    return base.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
+  }, [debtors, persona, financeView, simulatedToday]);
 
   const rows = useMemo(
     () => aggregateDebtors(scopedDebtors, !financeView),

@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { BRANCHES } from '../types';
 import type { Branch } from '../types';
 import { CurrencyInput } from './CurrencyInput';
-import { computeAgingBuckets } from '../utils/aging';
+import { bucketLabel, computeAgingBuckets } from '../utils/aging';
 
 interface NewDebtorModalProps {
   lockedBranch: Branch | null;
@@ -27,17 +27,30 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
   const canSave =
     name.trim() !== '' && natureId !== '' && descriptionId !== '' && requiredPaidDate !== '';
 
+  const previewLabel =
+    requiredPaidDate !== ''
+      ? bucketLabel(computeAgingBuckets(totalAR, requiredPaidDate, simulatedToday))
+      : null;
+
   const handleSave = () => {
     if (!canSave) return;
-    const buckets = computeAgingBuckets(totalAR, requiredPaidDate, simulatedToday);
     addDebtor({
       branch,
       name: name.trim(),
       natureId,
       descriptionId,
-      ...buckets,
+      notInArrears: 0,
+      arrears6m: 0,
+      arrears6to12m: 0,
+      arrears1to2y: 0,
+      arrears2to3y: 0,
+      arrears3to4y: 0,
+      arrears4to5y: 0,
+      arrears5yPlus: 0,
       reasonNonRecovery,
       recoverySteps,
+      requiredPaidDate,
+      totalARAmount: totalAR,
     });
     onClose();
   };
@@ -155,8 +168,15 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
           </div>
 
           <p className="col-span-2 text-xs text-slate-400">
-            The aging column (AR Not in Arrears, ≤ 6 months, 6–12 months, etc.) is calculated
-            automatically from the Required Paid Date compared to today's date ({simulatedToday}).
+            The aging column is calculated automatically from the Required Paid Date compared to
+            today's date ({simulatedToday}), and will keep shifting live if the simulated date
+            changes.
+            {previewLabel && (
+              <>
+                {' '}
+                Currently falls under: <span className="font-semibold text-brand-navy">{previewLabel}</span>.
+              </>
+            )}
           </p>
         </div>
 
