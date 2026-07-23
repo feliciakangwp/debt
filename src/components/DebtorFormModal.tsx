@@ -1,15 +1,38 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { BRANCHES, totalAR as sumTotalAR } from '../types';
-import type { Branch, Debtor } from '../types';
+import type { AREntry, Branch, Debtor } from '../types';
 import { CurrencyInput } from './CurrencyInput';
-import { bucketLabel, computeAgingBuckets } from '../utils/aging';
+import { bucketLabel, computeAgingBuckets, computeAgingBucketsForEntries, summarizeBuckets } from '../utils/aging';
 
 interface DebtorFormModalProps {
   lockedBranch: Branch | null;
   onClose: () => void;
   /** When set, the form edits this debtor instead of creating a new one. */
   editDebtor?: Debtor;
+}
+
+function makeEntryId(): string {
+  return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function initialEntries(editDebtor?: Debtor): AREntry[] {
+  if (editDebtor?.arEntries && editDebtor.arEntries.length > 0) {
+    return editDebtor.arEntries.map((e) => ({ ...e }));
+  }
+  if (editDebtor?.requiredPaidDate) {
+    return [
+      {
+        id: makeEntryId(),
+        amount: editDebtor.totalARAmount ?? 0,
+        requiredPaidDate: editDebtor.requiredPaidDate,
+      },
+    ];
+  }
+  if (editDebtor) {
+    return [{ id: makeEntryId(), amount: sumTotalAR(editDebtor), requiredPaidDate: '' }];
+  }
+  return [{ id: makeEntryId(), amount: 0, requiredPaidDate: '' }];
 }
 
 export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFormModalProps) {
@@ -24,19 +47,33 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
   const [descriptionId, setDescriptionId] = useState(
     editDebtor?.descriptionId ?? activeDescription[0]?.id ?? '',
   );
-  const [totalAR, setTotalAR] = useState(
-    editDebtor ? (editDebtor.totalARAmount ?? sumTotalAR(editDebtor)) : 0,
-  );
-  const [requiredPaidDate, setRequiredPaidDate] = useState(editDebtor?.requiredPaidDate ?? '');
+  const [arEntries, setArEntries] = useState<AREntry[]>(() => initialEntries(editDebtor));
   const [reasonNonRecovery, setReasonNonRecovery] = useState(editDebtor?.reasonNonRecovery ?? '');
   const [recoverySteps, setRecoverySteps] = useState(editDebtor?.recoverySteps ?? '');
 
   const canSave =
-    name.trim() !== '' && natureId !== '' && descriptionId !== '' && requiredPaidDate !== '';
+    name.trim() !== '' &&
+    natureId !== '' &&
+    descriptionId !== '' &&
+    arEntries.length > 0 &&
+    arEntries.every((e) => e.requiredPaidDate !== '');
 
-  const previewLabel =
-    requiredPaidDate !== ''
-      ? bucketLabel(computeAgingBuckets(totalAR, requiredPaidDate, simulatedToday))
+  const addEntry = () => {
+    setArEntries((prev) => [...prev, { id: makeEntryId(), amount: 0, requiredPaidDate: '' }]);
+  };
+
+  const removeEntry = (id: string) => {
+    setArEntries((prev) => (prev.length > 1 ? prev.filter((e) => e.id !== id) : prev));
+  };
+
+  const updateEntry = (id: string, patch: Partial<Omit<AREntry, 'id'>>) => {
+    setArEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  };
+
+  const validEntries = arEntries.filter((e) => e.requiredPaidDate !== '');
+  const overallSummary =
+    validEntries.length > 0
+      ? summarizeBuckets(computeAgingBucketsForEntries(validEntries, simulatedToday))
       : null;
 
   const handleSave = () => {
@@ -56,8 +93,9 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
       arrears5yPlus: 0,
       reasonNonRecovery,
       recoverySteps,
-      requiredPaidDate,
-      totalARAmount: totalAR,
+      arEntries,
+      requiredPaidDate: undefined,
+      totalARAmount: undefined,
     };
     if (isEditing) updateDebtor(editDebtor.id, payload);
     else addDebtor(payload);
@@ -66,7 +104,7 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 bg-brand-navy px-5 py-3">
           <h2 className="text-lg font-semibold text-white">
             {isEditing ? 'Edit Debtor Entry' : 'New Debtor Entry'}
@@ -139,21 +177,60 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
             </select>
           </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-500">Total AR</label>
-            <CurrencyInput value={totalAR} onChange={setTotalAR} />
-          </div>
+          <div className="col-span-2">
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-500">
+                Total AR (each amount can have its own Required Paid Date)
+              </label>
+              <button
+                type="button"
+                onClick={addEntry}
+                className="rounded-md border border-brand-navy/30 px-2 py-0.5 text-xs font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
+              >
+                + Add amount
+              </button>
+            </div>
 
-          <div>
-            <label className="mb-1 block text-xs font-semibold text-slate-500">
-              Required Paid Date
-            </label>
-            <input
-              type="date"
-              value={requiredPaidDate}
-              onChange={(e) => setRequiredPaidDate(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
-            />
+            <div className="space-y-2">
+              {arEntries.map((entry) => {
+                const rowLabel = entry.requiredPaidDate
+                  ? bucketLabel(computeAgingBuckets(entry.amount, entry.requiredPaidDate, simulatedToday))
+                  : null;
+                return (
+                  <div key={entry.id} className="rounded-md border border-slate-200 p-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 shrink-0">
+                        <CurrencyInput
+                          value={entry.amount}
+                          onChange={(v) => updateEntry(entry.id, { amount: v })}
+                        />
+                      </div>
+                      <input
+                        type="date"
+                        value={entry.requiredPaidDate}
+                        onChange={(e) => updateEntry(entry.id, { requiredPaidDate: e.target.value })}
+                        className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                      />
+                      {arEntries.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeEntry(entry.id)}
+                          title="Remove this amount"
+                          className="shrink-0 rounded-md px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                    {rowLabel && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        → <span className="font-semibold text-brand-navy">{rowLabel}</span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="col-span-2">
@@ -179,19 +256,19 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
           </div>
 
           <p className="col-span-2 text-xs text-slate-400">
-            {isEditing && !editDebtor.requiredPaidDate && (
+            {isEditing && !editDebtor.arEntries?.length && !editDebtor.requiredPaidDate && (
               <>
                 This entry was created with manually entered aging amounts and has no Required
-                Paid Date yet — pick one below to switch it over to automatic aging. {' '}
+                Paid Date yet — pick one below to switch it over to automatic aging.{' '}
               </>
             )}
-            The aging column is calculated automatically from the Required Paid Date compared to
+            Each amount is placed into its own aging column by comparing its Required Paid Date to
             today's date ({simulatedToday}), and will keep shifting live if the simulated date
             changes.
-            {previewLabel && (
+            {overallSummary && (
               <>
                 {' '}
-                Currently falls under: <span className="font-semibold text-brand-navy">{previewLabel}</span>.
+                Combined: <span className="font-semibold text-brand-navy">{overallSummary}</span>.
               </>
             )}
           </p>

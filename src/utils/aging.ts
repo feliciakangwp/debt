@@ -1,5 +1,6 @@
 import { ARREARS_BUCKET_KEYS } from '../types';
-import type { Debtor } from '../types';
+import type { AREntry, Debtor } from '../types';
+import { formatCurrency } from './format';
 
 export type AgingBuckets = Pick<
   Debtor,
@@ -30,12 +31,12 @@ function monthsElapsed(from: Date, to: Date): number {
 }
 
 /**
- * Places a single Total AR amount into the correct aging bucket by comparing
- * the required paid date against today. If today hasn't passed the required
- * paid date yet, the whole amount sits under "AR Not in Arrears".
+ * Places a single amount into the correct aging bucket by comparing the
+ * required paid date against today. If today hasn't passed the required paid
+ * date yet, the whole amount sits under "AR Not in Arrears".
  */
 export function computeAgingBuckets(
-  totalAR: number,
+  amount: number,
   requiredPaidDate: string,
   today: string,
 ): AgingBuckets {
@@ -44,31 +45,48 @@ export function computeAgingBuckets(
   const now = parseDate(today);
 
   if (now <= due) {
-    buckets.notInArrears = totalAR;
+    buckets.notInArrears = amount;
     return buckets;
   }
 
   const months = monthsElapsed(due, now);
 
-  if (months < 6) buckets.arrears6m = totalAR;
-  else if (months < 12) buckets.arrears6to12m = totalAR;
-  else if (months < 24) buckets.arrears1to2y = totalAR;
-  else if (months < 36) buckets.arrears2to3y = totalAR;
-  else if (months < 48) buckets.arrears3to4y = totalAR;
-  else if (months < 60) buckets.arrears4to5y = totalAR;
-  else buckets.arrears5yPlus = totalAR;
+  if (months < 6) buckets.arrears6m = amount;
+  else if (months < 12) buckets.arrears6to12m = amount;
+  else if (months < 24) buckets.arrears1to2y = amount;
+  else if (months < 36) buckets.arrears2to3y = amount;
+  else if (months < 48) buckets.arrears3to4y = amount;
+  else if (months < 60) buckets.arrears4to5y = amount;
+  else buckets.arrears5yPlus = amount;
 
   return buckets;
 }
 
+export function sumAgingBuckets(list: AgingBuckets[]): AgingBuckets {
+  const total = emptyBuckets();
+  for (const b of list) {
+    total.notInArrears += b.notInArrears;
+    for (const key of ARREARS_BUCKET_KEYS) total[key] += b[key];
+  }
+  return total;
+}
+
+export function computeAgingBucketsForEntries(entries: AREntry[], today: string): AgingBuckets {
+  return sumAgingBuckets(entries.map((e) => computeAgingBuckets(e.amount, e.requiredPaidDate, today)));
+}
+
 /**
  * Returns the aging buckets that should actually be displayed/summed for a
- * debtor. Entries created via the aging form carry requiredPaidDate +
- * totalARAmount and are recalculated live against `today`, so they shift
- * columns as the simulated date changes. Legacy entries with directly-entered
- * bucket amounts (no requiredPaidDate) are returned as-is.
+ * debtor, resolved live against `today` so records shift columns as the
+ * simulated date changes:
+ *  - arEntries (multiple amount + due date pairs) take priority when present.
+ *  - a single legacy requiredPaidDate/totalARAmount pair is used next.
+ *  - otherwise the directly-entered legacy bucket fields are returned as-is.
  */
 export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
+  if (d.arEntries && d.arEntries.length > 0) {
+    return computeAgingBucketsForEntries(d.arEntries, today);
+  }
   if (d.requiredPaidDate) {
     return computeAgingBuckets(d.totalARAmount ?? 0, d.requiredPaidDate, today);
   }
@@ -98,6 +116,14 @@ const BUCKET_LABELS: Record<keyof AgingBuckets, string> = {
 export function bucketLabel(buckets: AgingBuckets): string {
   const key = (Object.keys(buckets) as (keyof AgingBuckets)[]).find((k) => buckets[k] > 0);
   return key ? BUCKET_LABELS[key] : BUCKET_LABELS.notInArrears;
+}
+
+/** Compact multi-bucket summary, e.g. "AR Not in Arrears: $1,000 · AR in Arrears ≤ 6 months: $2,000" */
+export function summarizeBuckets(buckets: AgingBuckets): string {
+  const parts = (Object.keys(BUCKET_LABELS) as (keyof AgingBuckets)[])
+    .filter((k) => buckets[k] > 0)
+    .map((k) => `${BUCKET_LABELS[k]}: ${formatCurrency(buckets[k])}`);
+  return parts.length > 0 ? parts.join(' · ') : 'No amounts entered yet.';
 }
 
 export function todayIso(): string {

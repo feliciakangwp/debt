@@ -54,11 +54,21 @@ export interface Debtor {
   arrears5yPlus: number;
   reasonNonRecovery: string;
   recoverySteps: string;
-  /** Set only for entries created via the aging calculator form. When present,
-   * the bucket fields above are ignored in favor of a live calculation from
-   * totalARAmount + requiredPaidDate against the current simulated date. */
+  /** Legacy single-entry fields, kept for backward compatibility with entries
+   * saved before multiple Total AR / Required Paid Date pairs were supported. */
   requiredPaidDate?: string;
   totalARAmount?: number;
+  /** Multiple Total AR amounts, each with its own Required Paid Date (e.g.
+   * separate invoices). When present, this is the source of truth for aging
+   * bucket placement instead of the legacy fields above or the raw bucket
+   * fields. */
+  arEntries?: AREntry[];
+}
+
+export interface AREntry {
+  id: string;
+  amount: number;
+  requiredPaidDate: string;
 }
 
 export const ARREARS_BUCKET_KEYS = [
