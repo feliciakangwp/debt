@@ -1,28 +1,35 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { BRANCHES } from '../types';
-import type { Branch } from '../types';
+import { BRANCHES, totalAR as sumTotalAR } from '../types';
+import type { Branch, Debtor } from '../types';
 import { CurrencyInput } from './CurrencyInput';
 import { bucketLabel, computeAgingBuckets } from '../utils/aging';
 
-interface NewDebtorModalProps {
+interface DebtorFormModalProps {
   lockedBranch: Branch | null;
   onClose: () => void;
+  /** When set, the form edits this debtor instead of creating a new one. */
+  editDebtor?: Debtor;
 }
 
-export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
-  const { natureList, descriptionList, addDebtor, simulatedToday } = useApp();
+export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFormModalProps) {
+  const { natureList, descriptionList, addDebtor, updateDebtor, simulatedToday } = useApp();
   const activeNature = natureList.filter((n) => n.active);
   const activeDescription = descriptionList.filter((d) => d.active);
+  const isEditing = editDebtor !== undefined;
 
-  const [branch, setBranch] = useState<Branch>(lockedBranch ?? BRANCHES[0]);
-  const [name, setName] = useState('');
-  const [natureId, setNatureId] = useState(activeNature[0]?.id ?? '');
-  const [descriptionId, setDescriptionId] = useState(activeDescription[0]?.id ?? '');
-  const [totalAR, setTotalAR] = useState(0);
-  const [requiredPaidDate, setRequiredPaidDate] = useState('');
-  const [reasonNonRecovery, setReasonNonRecovery] = useState('');
-  const [recoverySteps, setRecoverySteps] = useState('');
+  const [branch, setBranch] = useState<Branch>(editDebtor?.branch ?? lockedBranch ?? BRANCHES[0]);
+  const [name, setName] = useState(editDebtor?.name ?? '');
+  const [natureId, setNatureId] = useState(editDebtor?.natureId ?? activeNature[0]?.id ?? '');
+  const [descriptionId, setDescriptionId] = useState(
+    editDebtor?.descriptionId ?? activeDescription[0]?.id ?? '',
+  );
+  const [totalAR, setTotalAR] = useState(
+    editDebtor ? (editDebtor.totalARAmount ?? sumTotalAR(editDebtor)) : 0,
+  );
+  const [requiredPaidDate, setRequiredPaidDate] = useState(editDebtor?.requiredPaidDate ?? '');
+  const [reasonNonRecovery, setReasonNonRecovery] = useState(editDebtor?.reasonNonRecovery ?? '');
+  const [recoverySteps, setRecoverySteps] = useState(editDebtor?.recoverySteps ?? '');
 
   const canSave =
     name.trim() !== '' && natureId !== '' && descriptionId !== '' && requiredPaidDate !== '';
@@ -34,7 +41,7 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
 
   const handleSave = () => {
     if (!canSave) return;
-    addDebtor({
+    const payload = {
       branch,
       name: name.trim(),
       natureId,
@@ -51,7 +58,9 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
       recoverySteps,
       requiredPaidDate,
       totalARAmount: totalAR,
-    });
+    };
+    if (isEditing) updateDebtor(editDebtor.id, payload);
+    else addDebtor(payload);
     onClose();
   };
 
@@ -59,7 +68,9 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 bg-brand-navy px-5 py-3">
-          <h2 className="text-lg font-semibold text-white">New Debtor Entry</h2>
+          <h2 className="text-lg font-semibold text-white">
+            {isEditing ? 'Edit Debtor Entry' : 'New Debtor Entry'}
+          </h2>
           <button onClick={onClose} className="text-white/70 hover:text-white">
             ✕
           </button>
@@ -168,6 +179,12 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
           </div>
 
           <p className="col-span-2 text-xs text-slate-400">
+            {isEditing && !editDebtor.requiredPaidDate && (
+              <>
+                This entry was created with manually entered aging amounts and has no Required
+                Paid Date yet — pick one below to switch it over to automatic aging. {' '}
+              </>
+            )}
             The aging column is calculated automatically from the Required Paid Date compared to
             today's date ({simulatedToday}), and will keep shifting live if the simulated date
             changes.
@@ -192,7 +209,7 @@ export function NewDebtorModal({ lockedBranch, onClose }: NewDebtorModalProps) {
             disabled={!canSave}
             className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save
+            {isEditing ? 'Save Changes' : 'Save'}
           </button>
         </div>
       </div>

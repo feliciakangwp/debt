@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
-import { NewDebtorModal } from '../components/NewDebtorModal';
+import { DebtorFormModal } from '../components/DebtorFormModal';
 import { formatCurrency } from '../utils/format';
 import { totalAR, totalInArrears } from '../types';
 import type { Debtor } from '../types';
@@ -11,6 +11,7 @@ import { resolveDebtorBuckets } from '../utils/aging';
 export function DebtorsPage() {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
   const [showNew, setShowNew] = useState(false);
+  const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
@@ -22,10 +23,27 @@ export function DebtorsPage() {
   }, [debtors, persona, simulatedToday]);
 
   const canCreate = persona.role === 'BRANCH_REP';
+  const canEdit = persona.role === 'BRANCH_REP';
 
   const columns: ColumnDef<Debtor>[] = [
     { key: 'branch', header: 'SB/Dept', accessor: (d) => d.branch, sortType: 'alpha' },
-    { key: 'name', header: 'Name of Debtor', accessor: (d) => d.name, sortType: 'alpha' },
+    {
+      key: 'name',
+      header: 'Name of Debtor',
+      accessor: (d) => d.name,
+      sortType: 'alpha',
+      render: (d) =>
+        canEdit ? (
+          <button
+            onClick={() => setEditingDebtor(d)}
+            className="font-medium text-brand-navy underline decoration-dotted underline-offset-2 hover:text-brand-gold"
+          >
+            {d.name}
+          </button>
+        ) : (
+          d.name
+        ),
+    },
     {
       key: 'nature',
       header: 'Nature of AR/ Arrears',
@@ -150,14 +168,23 @@ export function DebtorsPage() {
           ? 'Showing all branches.'
           : `Showing records for ${persona.branch} only.`}{' '}
         Click a column header to sort.
+        {canEdit && ' Click a debtor\'s name to edit that entry.'}
       </p>
 
       <DataTable columns={columns} rows={visibleRows} rowKey={(d) => d.id} />
 
       {showNew && (
-        <NewDebtorModal
+        <DebtorFormModal
           lockedBranch={persona.role === 'BRANCH_REP' ? persona.branch : null}
           onClose={() => setShowNew(false)}
+        />
+      )}
+
+      {editingDebtor && (
+        <DebtorFormModal
+          lockedBranch={persona.role === 'BRANCH_REP' ? persona.branch : null}
+          editDebtor={editingDebtor}
+          onClose={() => setEditingDebtor(null)}
         />
       )}
     </div>
