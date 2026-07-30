@@ -10,14 +10,20 @@ interface ReferenceListPageProps {
 export function ReferenceListPage({ title, description, listKey }: ReferenceListPageProps) {
   const { natureList, descriptionList, addReferenceItem, toggleReferenceItem } = useApp();
   const [newName, setNewName] = useState('');
+  const [newNatureId, setNewNatureId] = useState('');
   const [showForm, setShowForm] = useState(false);
 
-  const items = listKey === 'nature' ? natureList : descriptionList;
+  const isDescription = listKey === 'description';
+  const items = isDescription ? descriptionList : natureList;
+  const activeNature = natureList.filter((n) => n.active);
+  const natureName = (id?: string) => natureList.find((n) => n.id === id)?.name ?? '—';
 
   const handleAdd = () => {
     if (!newName.trim()) return;
-    addReferenceItem(listKey, newName);
+    if (isDescription && !newNatureId) return;
+    addReferenceItem(listKey, newName, isDescription ? newNatureId : undefined);
     setNewName('');
+    setNewNatureId('');
     setShowForm(false);
   };
 
@@ -44,9 +50,24 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
             placeholder="Enter new item name"
             className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
           />
+          {isDescription && (
+            <select
+              value={newNatureId}
+              onChange={(e) => setNewNatureId(e.target.value)}
+              className="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+            >
+              <option value="">Link to Nature…</option>
+              {activeNature.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={handleAdd}
-            className="rounded-md bg-brand-navy px-3 py-1.5 text-sm font-semibold text-white hover:brightness-110"
+            disabled={isDescription && !newNatureId}
+            className="rounded-md bg-brand-navy px-3 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Add
           </button>
@@ -54,6 +75,7 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
             onClick={() => {
               setShowForm(false);
               setNewName('');
+              setNewNatureId('');
             }}
             className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
           >
@@ -67,6 +89,11 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
           <thead className="bg-brand-navy text-white">
             <tr>
               <th className="px-4 py-2 text-left font-semibold">Item (A–Z)</th>
+              {isDescription && (
+                <th className="px-4 py-2 text-left font-semibold">
+                  Linked Nature of AR/ Arrears
+                </th>
+              )}
               <th className="px-4 py-2 text-center font-semibold">Status</th>
               <th className="px-4 py-2 text-center font-semibold">Action</th>
             </tr>
@@ -77,6 +104,9 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
                 <td className={`px-4 py-2 ${item.active ? '' : 'text-slate-400 line-through'}`}>
                   {item.name}
                 </td>
+                {isDescription && (
+                  <td className="px-4 py-2 text-slate-600">{natureName(item.natureId)}</td>
+                )}
                 <td className="px-4 py-2 text-center">
                   <span
                     className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${

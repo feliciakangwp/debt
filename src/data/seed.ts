@@ -9,16 +9,70 @@ export const NATURE_SEED: ReferenceItem[] = [
   { id: 'nat-tax', name: 'Tax', active: true },
 ];
 
-// Alphabetically ordered
+// Each Description item is linked to a Nature of AR/Arrears item via natureId.
 export const DESCRIPTION_SEED: ReferenceItem[] = [
-  { id: 'desc-cert-fee', name: 'Cert Fee', active: true },
-  { id: 'desc-cig-offence-duty', name: 'Cig Offence – Duty', active: true },
-  { id: 'desc-p-offence-alcohol', name: 'P Offence – Alcohol', active: true },
-  { id: 'desc-p-offence-motor', name: 'P Offence – Motor', active: true },
-  { id: 'desc-p-offence-vapt', name: 'P Offence – VAPT', active: true },
-  { id: 'desc-salary', name: 'Salary', active: true },
-  { id: 'desc-stat-fee', name: 'Stat Fee', active: true },
+  { id: 'desc-cert-doc-fee', name: 'Cert & Doc Fee', natureId: 'nat-fees', active: true },
+  { id: 'desc-warehouse-fee', name: 'Warehouse Fee', natureId: 'nat-fees', active: true },
+  { id: 'desc-other-fees', name: 'Other Fees', natureId: 'nat-fees', active: true },
+  {
+    id: 'desc-p-offence-instalment',
+    name: 'P Offence – Instalment',
+    natureId: 'nat-financial-penalty',
+    active: true,
+  },
+  {
+    id: 'desc-other-non-p-offence-instalment',
+    name: 'Other non P Offence – Instalment',
+    natureId: 'nat-financial-penalty',
+    active: true,
+  },
+  {
+    id: 'desc-motor-offence-late-instalment',
+    name: 'Motor Offence – Late instalment',
+    natureId: 'nat-financial-penalty',
+    active: true,
+  },
+  { id: 'desc-miscellaneous-sales', name: 'Miscellaneous Sales', natureId: 'nat-others', active: true },
+  {
+    id: 'desc-staff-related-salary-medical',
+    name: 'Staff Related (Salary/ Medical)',
+    natureId: 'nat-staff-related',
+    active: true,
+  },
+  {
+    id: 'desc-p-offence-liquor-duty',
+    name: 'P Offence – Liquor Duty',
+    natureId: 'nat-tax',
+    active: true,
+  },
+  {
+    id: 'desc-p-offence-motor-vehicle',
+    name: 'P Offence – Motor Vehicle',
+    natureId: 'nat-tax',
+    active: true,
+  },
+  {
+    id: 'desc-tobacco-cigarette-recovery',
+    name: 'Tobacco/ Cigarette – Recovery',
+    natureId: 'nat-tax',
+    active: true,
+  },
 ];
+
+/**
+ * Maps description ids retired in the dataset refresh to their closest
+ * equivalent in DESCRIPTION_SEED, so debtors saved under the old dataset
+ * (in a browser's localStorage) keep pointing at a valid Description.
+ */
+export const DESCRIPTION_ID_MIGRATION: Record<string, string> = {
+  'desc-cert-fee': 'desc-cert-doc-fee',
+  'desc-cig-offence-duty': 'desc-tobacco-cigarette-recovery',
+  'desc-p-offence-alcohol': 'desc-p-offence-liquor-duty',
+  'desc-p-offence-motor': 'desc-p-offence-motor-vehicle',
+  'desc-p-offence-vapt': 'desc-p-offence-motor-vehicle',
+  'desc-salary': 'desc-staff-related-salary-medical',
+  'desc-stat-fee': 'desc-other-fees',
+};
 
 const mk = (
   branch: Debtor['branch'],
@@ -57,6 +111,7 @@ const mk = (
   arrears5yPlus: amounts.arrears5yPlus ?? 0,
   reasonNonRecovery,
   recoverySteps,
+  caseReference: '',
 });
 
 export const DEBTORS_SEED: Debtor[] = [
@@ -64,7 +119,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PSB',
     'Tan Ah Gao',
     'nat-tax',
-    'desc-p-offence-vapt',
+    'desc-p-offence-motor-vehicle',
     { notInArrears: 5000, arrears6m: 10000 },
     'Unable to contact',
     'Engagement',
@@ -74,7 +129,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PSB',
     'Tan Ah Lian',
     'nat-tax',
-    'desc-p-offence-vapt',
+    'desc-p-offence-motor-vehicle',
     { notInArrears: 0, arrears2to3y: 50000 },
     'Unable to contact',
     'Engagement',
@@ -84,7 +139,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PSB',
     'ABC Company',
     'nat-tax',
-    'desc-p-offence-alcohol',
+    'desc-p-offence-liquor-duty',
     { arrears3to4y: 3000, arrears4to5y: 3000, arrears5yPlus: 10000 },
     'No contact',
     'Law firm',
@@ -94,7 +149,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PSB',
     'Ah Sia',
     'nat-fees',
-    'desc-stat-fee',
+    'desc-other-fees',
     { notInArrears: 0, arrears6m: 3000 },
     '',
     '',
@@ -104,7 +159,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PSB',
     'Ah Sia',
     'nat-fees',
-    'desc-cert-fee',
+    'desc-cert-doc-fee',
     { arrears6to12m: 6000 },
     '',
     '',
@@ -114,7 +169,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PCB',
     'Tan Ah Siao',
     'nat-tax',
-    'desc-p-offence-vapt',
+    'desc-p-offence-motor-vehicle',
     { notInArrears: 0, arrears6to12m: 1000 },
     'Unable to contact',
     'Engagement',
@@ -124,7 +179,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PCB',
     'XYZ Company',
     'nat-tax',
-    'desc-p-offence-alcohol',
+    'desc-p-offence-liquor-duty',
     { arrears2to3y: 3000 },
     'No contact',
     'Law firm',
@@ -134,7 +189,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PCB',
     'Auntie Mao',
     'nat-fees',
-    'desc-stat-fee',
+    'desc-other-fees',
     { notInArrears: 0, arrears4to5y: 5000 },
     '',
     '',
@@ -144,7 +199,7 @@ export const DEBTORS_SEED: Debtor[] = [
     'PCB',
     'Uncle Tan',
     'nat-fees',
-    'desc-cert-fee',
+    'desc-cert-doc-fee',
     { arrears6to12m: 60000 },
     '',
     '',

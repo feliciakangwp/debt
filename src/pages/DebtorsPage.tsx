@@ -73,6 +73,14 @@ export function DebtorsPage() {
       align: 'right',
     },
     {
+      key: 'totalInArrears',
+      header: 'Total in Arrears',
+      accessor: (d) => totalInArrears(d),
+      render: (d) => formatCurrency(totalInArrears(d)),
+      sortType: 'numeric',
+      align: 'right',
+    },
+    {
       key: 'arrears6m',
       header: 'AR in Arrears ≤ 6 months',
       accessor: (d) => d.arrears6m,
@@ -129,14 +137,6 @@ export function DebtorsPage() {
       align: 'right',
     },
     {
-      key: 'totalInArrears',
-      header: 'Total in Arrears',
-      accessor: (d) => totalInArrears(d),
-      render: (d) => formatCurrency(totalInArrears(d)),
-      sortType: 'numeric',
-      align: 'right',
-    },
-    {
       key: 'reason',
       header: 'Reason for non-recovery',
       accessor: (d) => d.reasonNonRecovery,
@@ -146,6 +146,12 @@ export function DebtorsPage() {
       key: 'steps',
       header: 'Recovery steps taken',
       accessor: (d) => d.recoverySteps,
+      sortType: 'alpha',
+    },
+    {
+      key: 'caseReference',
+      header: 'Case Reference',
+      accessor: (d) => d.caseReference,
       sortType: 'alpha',
     },
   ];

@@ -36,6 +36,9 @@ export interface ReferenceItem {
   id: string;
   name: string;
   active: boolean;
+  /** Only set on Description items: the Nature of AR/Arrears item they belong
+   * to. Used to filter the Description dropdown once a Nature is picked. */
+  natureId?: string;
 }
 
 export interface Debtor {
@@ -54,6 +57,7 @@ export interface Debtor {
   arrears5yPlus: number;
   reasonNonRecovery: string;
   recoverySteps: string;
+  caseReference: string;
   /** Legacy single-entry fields, kept for backward compatibility with entries
    * saved before multiple Total AR / Required Paid Date pairs were supported. */
   requiredPaidDate?: string;

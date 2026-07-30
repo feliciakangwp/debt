@@ -38,12 +38,16 @@ function initialEntries(editDebtor?: Debtor): AREntry[] {
 export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFormModalProps) {
   const { natureList, descriptionList, addDebtor, updateDebtor, simulatedToday } = useApp();
   const activeNature = natureList.filter((n) => n.active);
-  const activeDescription = descriptionList.filter((d) => d.active);
   const isEditing = editDebtor !== undefined;
 
   const [branch, setBranch] = useState<Branch>(editDebtor?.branch ?? lockedBranch ?? BRANCHES[0]);
   const [name, setName] = useState(editDebtor?.name ?? '');
   const [natureId, setNatureId] = useState(editDebtor?.natureId ?? activeNature[0]?.id ?? '');
+
+  const descriptionsForNature = (nId: string) =>
+    descriptionList.filter((d) => d.active && d.natureId === nId);
+  const activeDescription = descriptionsForNature(natureId);
+
   const [descriptionId, setDescriptionId] = useState(
     editDebtor?.descriptionId ?? activeDescription[0]?.id ?? '',
   );
@@ -51,6 +55,15 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
   const [arEntries, setArEntries] = useState<AREntry[]>(initialEntriesSnapshot);
   const [reasonNonRecovery, setReasonNonRecovery] = useState(editDebtor?.reasonNonRecovery ?? '');
   const [recoverySteps, setRecoverySteps] = useState(editDebtor?.recoverySteps ?? '');
+  const [caseReference, setCaseReference] = useState(editDebtor?.caseReference ?? '');
+
+  const handleNatureChange = (newNatureId: string) => {
+    setNatureId(newNatureId);
+    const stillValid = descriptionsForNature(newNatureId).some((d) => d.id === descriptionId);
+    if (!stillValid) {
+      setDescriptionId(descriptionsForNature(newNatureId)[0]?.id ?? '');
+    }
+  };
 
   // A legacy record (manually distributed bucket amounts, no due date at all)
   // that the user hasn't touched the amounts/dates on yet: editing an
@@ -107,6 +120,7 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
       descriptionId,
       reasonNonRecovery,
       recoverySteps,
+      caseReference,
     };
 
     if (preserveLegacyBuckets) {
@@ -180,7 +194,7 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
             </label>
             <select
               value={natureId}
-              onChange={(e) => setNatureId(e.target.value)}
+              onChange={(e) => handleNatureChange(e.target.value)}
               className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
             >
               {activeNature.map((n) => (
@@ -198,8 +212,10 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
             <select
               value={descriptionId}
               onChange={(e) => setDescriptionId(e.target.value)}
-              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+              disabled={activeDescription.length === 0}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
             >
+              {activeDescription.length === 0 && <option value="">No descriptions linked</option>}
               {activeDescription.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -279,6 +295,18 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
                 );
               })}
             </div>
+          </div>
+
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs font-semibold text-slate-500">
+              Case Reference
+            </label>
+            <input
+              value={caseReference}
+              onChange={(e) => setCaseReference(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+              placeholder="Free text"
+            />
           </div>
 
           <div className="col-span-2">

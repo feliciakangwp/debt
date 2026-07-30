@@ -16,6 +16,7 @@ export interface AggregatedRow {
   arrears5yPlus: number;
   reasonNonRecovery: string;
   recoverySteps: string;
+  caseReference: string;
 }
 
 function joinUnique(values: string[]): string {
@@ -58,6 +59,7 @@ export function aggregateDebtors(debtors: Debtor[], includeBranch: boolean): Agg
       arrears5yPlus: sum((d) => d.arrears5yPlus),
       reasonNonRecovery: joinUnique(group.map((d) => d.reasonNonRecovery)),
       recoverySteps: joinUnique(group.map((d) => d.recoverySteps)),
+      caseReference: joinUnique(group.map((d) => d.caseReference)),
     });
   }
   return rows;

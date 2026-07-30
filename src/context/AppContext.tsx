@@ -2,10 +2,19 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Debtor, Persona, ReferenceItem } from '../types';
 import { PERSONAS } from '../types';
-import { DEBTORS_SEED, DESCRIPTION_SEED, NATURE_SEED } from '../data/seed';
+import {
+  DEBTORS_SEED,
+  DESCRIPTION_ID_MIGRATION,
+  DESCRIPTION_SEED,
+  NATURE_SEED,
+} from '../data/seed';
 import { todayIso } from '../utils/aging';
 
 const STORAGE_KEY = 'debt-management-module-v1';
+
+// Bump whenever a change requires overwriting persisted reference-list data
+// (e.g. the Description dataset refresh below) rather than just adding to it.
+const DATA_VERSION = 2;
 
 interface PersistedState {
   natureList: ReferenceItem[];
@@ -13,12 +22,41 @@ interface PersistedState {
   debtors: Debtor[];
   personaId: string;
   simulatedToday: string;
+  dataVersion: number;
+}
+
+function migrateDebtorDescriptionIds(debtors: Debtor[]): Debtor[] {
+  return debtors.map((d) =>
+    DESCRIPTION_ID_MIGRATION[d.descriptionId]
+      ? { ...d, descriptionId: DESCRIPTION_ID_MIGRATION[d.descriptionId] }
+      : d,
+  );
 }
 
 function loadInitial(): PersistedState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { simulatedToday: todayIso(), ...JSON.parse(raw) } as PersistedState;
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PersistedState>;
+      if ((parsed.dataVersion ?? 1) < DATA_VERSION) {
+        return {
+          natureList: parsed.natureList ?? NATURE_SEED,
+          descriptionList: DESCRIPTION_SEED,
+          debtors: migrateDebtorDescriptionIds(parsed.debtors ?? DEBTORS_SEED),
+          personaId: parsed.personaId ?? 'FINANCE',
+          simulatedToday: parsed.simulatedToday ?? todayIso(),
+          dataVersion: DATA_VERSION,
+        };
+      }
+      return {
+        natureList: parsed.natureList ?? NATURE_SEED,
+        descriptionList: parsed.descriptionList ?? DESCRIPTION_SEED,
+        debtors: parsed.debtors ?? DEBTORS_SEED,
+        personaId: parsed.personaId ?? 'FINANCE',
+        simulatedToday: parsed.simulatedToday ?? todayIso(),
+        dataVersion: DATA_VERSION,
+      };
+    }
   } catch {
     // ignore corrupt storage
   }
@@ -28,6 +66,7 @@ function loadInitial(): PersistedState {
     debtors: DEBTORS_SEED,
     personaId: 'FINANCE',
     simulatedToday: todayIso(),
+    dataVersion: DATA_VERSION,
   };
 }
 
@@ -39,7 +78,7 @@ interface AppContextValue {
   debtors: Debtor[];
   simulatedToday: string;
   setSimulatedToday: (isoDate: string) => void;
-  addReferenceItem: (list: 'nature' | 'description', name: string) => void;
+  addReferenceItem: (list: 'nature' | 'description', name: string, natureId?: string) => void;
   toggleReferenceItem: (list: 'nature' | 'description', id: string) => void;
   addDebtor: (debtor: Omit<Debtor, 'id'>) => void;
   updateDebtor: (id: string, patch: Partial<Debtor>) => void;
@@ -68,6 +107,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       debtors,
       personaId,
       simulatedToday,
+      dataVersion: DATA_VERSION,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [natureList, descriptionList, debtors, personaId, simulatedToday]);
@@ -77,13 +117,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [personaId],
   );
 
-  const addReferenceItem = (list: 'nature' | 'description', name: string) => {
+  const addReferenceItem = (list: 'nature' | 'description', name: string, natureId?: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
+    if (list === 'description' && !natureId) return;
     const item: ReferenceItem = {
       id: `${list}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: trimmed,
       active: true,
+      ...(list === 'description' ? { natureId } : {}),
     };
     if (list === 'nature') setNatureList((prev) => sortAlpha([...prev, item]));
     else setDescriptionList((prev) => sortAlpha([...prev, item]));
