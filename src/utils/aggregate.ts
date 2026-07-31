@@ -19,8 +19,8 @@ export interface AggregatedRow {
   caseReference: string;
 }
 
-function joinUnique(values: string[]): string {
-  const unique = Array.from(new Set(values.map((v) => v.trim()).filter(Boolean)));
+function joinUnique(values: (string | undefined)[]): string {
+  const unique = Array.from(new Set(values.map((v) => (v ?? '').trim()).filter(Boolean)));
   return unique.join('; ');
 }
 

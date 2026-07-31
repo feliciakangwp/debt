@@ -33,6 +33,18 @@ function migrateDebtorDescriptionIds(debtors: Debtor[]): Debtor[] {
   );
 }
 
+// Backfills string fields added after a debtor may have already been
+// persisted to localStorage, so older saved records never carry `undefined`
+// into code that assumes a string (e.g. joining reasons/case references).
+function normalizeDebtors(debtors: Debtor[]): Debtor[] {
+  return debtors.map((d) => ({
+    ...d,
+    reasonNonRecovery: d.reasonNonRecovery ?? '',
+    recoverySteps: d.recoverySteps ?? '',
+    caseReference: d.caseReference ?? '',
+  }));
+}
+
 function loadInitial(): PersistedState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -42,7 +54,7 @@ function loadInitial(): PersistedState {
         return {
           natureList: parsed.natureList ?? NATURE_SEED,
           descriptionList: DESCRIPTION_SEED,
-          debtors: migrateDebtorDescriptionIds(parsed.debtors ?? DEBTORS_SEED),
+          debtors: normalizeDebtors(migrateDebtorDescriptionIds(parsed.debtors ?? DEBTORS_SEED)),
           personaId: parsed.personaId ?? 'FINANCE',
           simulatedToday: parsed.simulatedToday ?? todayIso(),
           dataVersion: DATA_VERSION,
@@ -51,7 +63,7 @@ function loadInitial(): PersistedState {
       return {
         natureList: parsed.natureList ?? NATURE_SEED,
         descriptionList: parsed.descriptionList ?? DESCRIPTION_SEED,
-        debtors: parsed.debtors ?? DEBTORS_SEED,
+        debtors: normalizeDebtors(parsed.debtors ?? DEBTORS_SEED),
         personaId: parsed.personaId ?? 'FINANCE',
         simulatedToday: parsed.simulatedToday ?? todayIso(),
         dataVersion: DATA_VERSION,
