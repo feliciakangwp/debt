@@ -5,6 +5,7 @@ import { todayIso } from '../utils/aging';
 export type PageKey =
   | 'nature'
   | 'description'
+  | 'debtor-list'
   | 'debtors'
   | 'arrears'
   | 'arrears-fin';
@@ -25,8 +26,9 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   const isFinance = persona.role === 'FINANCE';
 
   const items: NavItem[] = [
-    { key: 'debtors', label: 'List of Debtors', visible: true },
-    { key: 'arrears', label: 'List of AR / Arrears', visible: true },
+    { key: 'debtor-list', label: 'Debtor List', visible: true },
+    { key: 'debtors', label: 'Debtor Report', visible: true },
+    { key: 'arrears', label: 'Arrears Report', visible: true },
     { key: 'arrears-fin', label: 'List of AR / Arrears (FIN)', visible: isFinance },
     { key: 'nature', label: 'Nature of Account/ Arrears', visible: isFinance },
     { key: 'description', label: 'Description', visible: isFinance },

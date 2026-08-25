@@ -147,7 +147,7 @@ export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPagePr
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold text-brand-navy">
-        {financeView ? 'List of AR / Arrears (FIN)' : 'List of AR / Arrears'}
+        {financeView ? 'List of AR / Arrears (FIN)' : 'Arrears Report'}
       </h1>
       <p className="mb-5 text-sm text-slate-500">
         {financeView

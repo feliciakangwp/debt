@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { BRANCHES, totalAR as sumTotalAR } from '../types';
+import { BRANCHES } from '../types';
 import type { AREntry, Branch, Debtor } from '../types';
 import { CurrencyInput } from './CurrencyInput';
-import { bucketLabel, computeAgingBuckets, computeAgingBucketsForEntries, summarizeBuckets } from '../utils/aging';
+import {
+  bucketLabel,
+  computeAgingBuckets,
+  computeAgingBucketsForEntries,
+  debtorAmountRows,
+  summarizeBuckets,
+} from '../utils/aging';
 
 interface DebtorFormModalProps {
   lockedBranch: Branch | null;
@@ -17,22 +23,8 @@ function makeEntryId(): string {
 }
 
 function initialEntries(editDebtor?: Debtor): AREntry[] {
-  if (editDebtor?.arEntries && editDebtor.arEntries.length > 0) {
-    return editDebtor.arEntries.map((e) => ({ ...e }));
-  }
-  if (editDebtor?.requiredPaidDate) {
-    return [
-      {
-        id: makeEntryId(),
-        amount: editDebtor.totalARAmount ?? 0,
-        requiredPaidDate: editDebtor.requiredPaidDate,
-      },
-    ];
-  }
-  if (editDebtor) {
-    return [{ id: makeEntryId(), amount: sumTotalAR(editDebtor), requiredPaidDate: '' }];
-  }
-  return [{ id: makeEntryId(), amount: 0, requiredPaidDate: '' }];
+  if (!editDebtor) return [{ id: makeEntryId(), amount: 0, requiredPaidDate: '' }];
+  return debtorAmountRows(editDebtor).map((row) => ({ id: makeEntryId(), ...row }));
 }
 
 export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFormModalProps) {

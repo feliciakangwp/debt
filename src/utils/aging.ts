@@ -1,4 +1,4 @@
-import { ARREARS_BUCKET_KEYS } from '../types';
+import { ARREARS_BUCKET_KEYS, totalAR } from '../types';
 import type { AREntry, Debtor } from '../types';
 import { formatCurrency } from './format';
 
@@ -105,6 +105,23 @@ export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
     arrears4to5y: d.arrears4to5y,
     arrears5yPlus: d.arrears5yPlus,
   };
+}
+
+/**
+ * Flattens a debtor into its amount/due-date rows:
+ *  - arEntries (multiple amount + due date pairs) take priority when present.
+ *  - a single legacy requiredPaidDate/totalARAmount pair is used next.
+ *  - otherwise falls back to one row for the whole debtor's Total AR with no
+ *    due date, since legacy fixed-bucket records never recorded one.
+ */
+export function debtorAmountRows(d: Debtor): { amount: number; requiredPaidDate: string }[] {
+  if (d.arEntries && d.arEntries.length > 0) {
+    return d.arEntries.map((e) => ({ amount: e.amount, requiredPaidDate: e.requiredPaidDate }));
+  }
+  if (d.requiredPaidDate) {
+    return [{ amount: d.totalARAmount ?? 0, requiredPaidDate: d.requiredPaidDate }];
+  }
+  return [{ amount: totalAR(d), requiredPaidDate: '' }];
 }
 
 const BUCKET_LABELS: Record<keyof AgingBuckets, string> = {

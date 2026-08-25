@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import type { PageKey } from './components/Sidebar';
 import { ReferenceListPage } from './pages/ReferenceListPage';
+import { DebtorListPage } from './pages/DebtorListPage';
 import { DebtorsPage } from './pages/DebtorsPage';
 import { ArrearsSummaryPage } from './pages/ArrearsSummaryPage';
 
@@ -12,11 +13,11 @@ function financeOnly(page: PageKey): boolean {
 
 function Shell() {
   const { persona } = useApp();
-  const [page, setPage] = useState<PageKey>('debtors');
+  const [page, setPage] = useState<PageKey>('debtor-list');
 
   useEffect(() => {
     if (financeOnly(page) && persona.role !== 'FINANCE') {
-      setPage('debtors');
+      setPage('debtor-list');
     }
   }, [persona, page]);
 
@@ -38,6 +39,7 @@ function Shell() {
             listKey="description"
           />
         )}
+        {page === 'debtor-list' && <DebtorListPage />}
         {page === 'debtors' && <DebtorsPage />}
         {page === 'arrears' && <ArrearsSummaryPage />}
         {page === 'arrears-fin' && <ArrearsSummaryPage financeView />}
