@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 
 export interface ColumnDef<T> {
   key: string;
-  header: string;
+  header: React.ReactNode;
   accessor: (row: T) => string | number;
   render?: (row: T) => React.ReactNode;
   sortType?: 'alpha' | 'numeric';
   align?: 'left' | 'right' | 'center';
+  /** Set to false for non-data columns (e.g. row-selection checkboxes) to disable click-to-sort. Defaults to true. */
+  sortable?: boolean;
 }
 
 interface DataTableProps<T> {
@@ -60,27 +62,32 @@ export function DataTable<T>({ columns, rows, rowKey, emptyMessage }: DataTableP
       <table className="min-w-full text-sm">
         <thead className="bg-brand-navy text-white">
           <tr>
-            {columns.map((col) => (
-              <th
-                key={col.key}
-                onClick={() => handleSort(col)}
-                className={`cursor-pointer select-none whitespace-nowrap px-3 py-2 font-semibold ${
-                  col.align === 'right'
-                    ? 'text-right'
-                    : col.align === 'center'
-                      ? 'text-center'
-                      : 'text-left'
-                }`}
-                title="Click to sort"
-              >
-                <span className="inline-flex items-center gap-1">
-                  {col.header}
-                  <span className="text-brand-gold">
-                    {sortKey === col.key ? (sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '') : '⇅'}
+            {columns.map((col) => {
+              const sortable = col.sortable !== false;
+              return (
+                <th
+                  key={col.key}
+                  onClick={sortable ? () => handleSort(col) : undefined}
+                  className={`select-none whitespace-nowrap px-3 py-2 font-semibold ${sortable ? 'cursor-pointer' : ''} ${
+                    col.align === 'right'
+                      ? 'text-right'
+                      : col.align === 'center'
+                        ? 'text-center'
+                        : 'text-left'
+                  }`}
+                  title={sortable ? 'Click to sort' : undefined}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {col.header}
+                    {sortable && (
+                      <span className="text-brand-gold">
+                        {sortKey === col.key ? (sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '') : '⇅'}
+                      </span>
+                    )}
                   </span>
-                </span>
-              </th>
-            ))}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>

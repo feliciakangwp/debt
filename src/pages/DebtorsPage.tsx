@@ -6,6 +6,8 @@ import { formatCurrency } from '../utils/format';
 import { totalAR, totalInArrears } from '../types';
 import type { Debtor } from '../types';
 import { resolveDebtorBuckets } from '../utils/aging';
+import { visibleDebtors } from '../utils/visibility';
+import { StatusBadge } from '../components/StatusBadge';
 
 export function DebtorsPage() {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
@@ -14,12 +16,18 @@ export function DebtorsPage() {
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const visibleRows = useMemo(() => {
-    const scoped =
-      persona.role === 'FINANCE' ? debtors : debtors.filter((d) => d.branch === persona.branch);
+    const scoped = visibleDebtors(persona, debtors);
     return scoped.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
   }, [debtors, persona, simulatedToday]);
 
   const columns: ColumnDef<Debtor>[] = [
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: (d) => d.status,
+      render: (d) => <StatusBadge status={d.status} />,
+      sortType: 'alpha',
+    },
     { key: 'branch', header: 'SB/Dept', accessor: (d) => d.branch, sortType: 'alpha' },
     { key: 'name', header: 'Name of Debtor', accessor: (d) => d.name, sortType: 'alpha' },
     {

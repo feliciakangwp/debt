@@ -2,7 +2,7 @@ export type Branch = 'PSB' | 'TIB' | 'SIB' | 'PCB';
 
 export const BRANCHES: Branch[] = ['PSB', 'TIB', 'SIB', 'PCB'];
 
-export type Role = 'BRANCH_REP' | 'CPM' | 'FINANCE';
+export type Role = 'BRANCH_REP' | 'CPM' | 'FINANCE' | 'REVIEWER_1';
 
 export interface Persona {
   id: string;
@@ -24,6 +24,12 @@ export const PERSONAS: Persona[] = [
     role: 'CPM' as Role,
     branch: b,
   })),
+  ...BRANCHES.map((b) => ({
+    id: `REVIEWER1_${b}`,
+    label: `Reviewer 1 ${b}`,
+    role: 'REVIEWER_1' as Role,
+    branch: b,
+  })),
   {
     id: 'FINANCE',
     label: 'Finance',
@@ -41,8 +47,11 @@ export interface ReferenceItem {
   natureId?: string;
 }
 
+export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED';
+
 export interface Debtor {
   id: string;
+  status: DebtorStatus;
   branch: Branch;
   name: string;
   natureId: string;

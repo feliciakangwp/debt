@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Debtor, Persona, ReferenceItem } from '../types';
+import type { Debtor, DebtorStatus, Persona, ReferenceItem } from '../types';
 import { PERSONAS } from '../types';
 import {
   DEBTORS_SEED,
@@ -33,12 +33,16 @@ function migrateDebtorDescriptionIds(debtors: Debtor[]): Debtor[] {
   );
 }
 
-// Backfills string fields added after a debtor may have already been
-// persisted to localStorage, so older saved records never carry `undefined`
-// into code that assumes a string (e.g. joining reasons/case references).
+// Backfills fields added after a debtor may have already been persisted to
+// localStorage, so older saved records never carry `undefined` into code
+// that assumes a value is present (e.g. joining reasons/case references).
+// Debtors saved before the approval flow existed default to SUPPORTED so
+// they don't disappear from reports/reviewer/CPM views they were already
+// visible on.
 function normalizeDebtors(debtors: Debtor[]): Debtor[] {
   return debtors.map((d) => ({
     ...d,
+    status: d.status ?? 'SUPPORTED',
     reasonNonRecovery: d.reasonNonRecovery ?? '',
     recoverySteps: d.recoverySteps ?? '',
     caseReference: d.caseReference ?? '',
@@ -94,6 +98,8 @@ interface AppContextValue {
   toggleReferenceItem: (list: 'nature' | 'description', id: string) => void;
   addDebtor: (debtor: Omit<Debtor, 'id'>) => void;
   updateDebtor: (id: string, patch: Partial<Debtor>) => void;
+  updateDebtorsStatus: (ids: string[], status: DebtorStatus) => void;
+  deleteDebtors: (ids: string[]) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -159,6 +165,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDebtors((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   };
 
+  const updateDebtorsStatus = (ids: string[], status: DebtorStatus) => {
+    const idSet = new Set(ids);
+    setDebtors((prev) => prev.map((d) => (idSet.has(d.id) ? { ...d, status } : d)));
+  };
+
+  const deleteDebtors = (ids: string[]) => {
+    const idSet = new Set(ids);
+    setDebtors((prev) => prev.filter((d) => !idSet.has(d.id)));
+  };
+
   const value: AppContextValue = {
     persona,
     setPersonaId,
@@ -171,6 +187,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleReferenceItem,
     addDebtor,
     updateDebtor,
+    updateDebtorsStatus,
+    deleteDebtors,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

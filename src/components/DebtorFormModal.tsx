@@ -134,7 +134,7 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
         totalARAmount: undefined,
       };
       if (isEditing) updateDebtor(editDebtor.id, { ...baseFields, ...dynamicFields });
-      else addDebtor({ ...baseFields, ...dynamicFields });
+      else addDebtor({ ...baseFields, ...dynamicFields, status: 'DRAFT' });
     }
     onClose();
   };

@@ -97,6 +97,7 @@ const mk = (
   id: string,
 ): Debtor => ({
   id,
+  status: 'SUPPORTED',
   branch,
   name,
   natureId,

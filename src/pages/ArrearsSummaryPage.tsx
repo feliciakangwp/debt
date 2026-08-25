@@ -6,6 +6,7 @@ import { aggregateDebtors, aggregatedTotalAR, aggregatedTotalInArrears } from '.
 import type { AggregatedRow } from '../utils/aggregate';
 import { formatCurrency } from '../utils/format';
 import { resolveDebtorBuckets } from '../utils/aging';
+import { visibleDebtors } from '../utils/visibility';
 
 interface ArrearsSummaryPageProps {
   financeView?: boolean;
@@ -18,12 +19,9 @@ export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPagePr
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const scopedDebtors = useMemo(() => {
-    const base =
-      financeView || persona.role === 'FINANCE'
-        ? debtors
-        : debtors.filter((d) => d.branch === persona.branch);
+    const base = visibleDebtors(persona, debtors);
     return base.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
-  }, [debtors, persona, financeView, simulatedToday]);
+  }, [debtors, persona, simulatedToday]);
 
   const rows = useMemo(
     () => aggregateDebtors(scopedDebtors, !financeView),
