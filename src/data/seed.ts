@@ -113,6 +113,7 @@ const mk = (
   reasonNonRecovery,
   recoverySteps,
   caseReference: '',
+  auditLog: [{ id: `log-${id}-seed`, date: '2026-01-01', actor: 'Finance', action: 'Sample data loaded' }],
 });
 
 export const DEBTORS_SEED: Debtor[] = [

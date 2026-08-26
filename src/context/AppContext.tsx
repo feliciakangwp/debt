@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Debtor, DebtorStatus, Persona, ReferenceItem } from '../types';
+import type { AuditLogEntry, Debtor, DebtorEditProposal, DebtorStatus, Persona, ReferenceItem } from '../types';
 import { PERSONAS } from '../types';
 import {
   DEBTORS_SEED,
@@ -46,6 +46,7 @@ function normalizeDebtors(debtors: Debtor[]): Debtor[] {
     reasonNonRecovery: d.reasonNonRecovery ?? '',
     recoverySteps: d.recoverySteps ?? '',
     caseReference: d.caseReference ?? '',
+    auditLog: d.auditLog ?? [],
   }));
 }
 
@@ -98,8 +99,21 @@ interface AppContextValue {
   toggleReferenceItem: (list: 'nature' | 'description', id: string) => void;
   addDebtor: (debtor: Omit<Debtor, 'id'>) => void;
   updateDebtor: (id: string, patch: Partial<Debtor>) => void;
-  updateDebtorsStatus: (ids: string[], status: DebtorStatus) => void;
+  updateDebtorsStatus: (
+    ids: string[],
+    status: DebtorStatus,
+    logAction: string,
+    actorLabel: string,
+  ) => void;
   deleteDebtors: (ids: string[]) => void;
+  updateDebtorDetails: (
+    id: string,
+    patch: Pick<Debtor, 'caseReference' | 'reasonNonRecovery' | 'recoverySteps'>,
+    actorLabel: string,
+  ) => void;
+  requestEdit: (id: string, proposal: DebtorEditProposal, actorLabel: string) => void;
+  approveEdit: (id: string, actorLabel: string) => void;
+  rejectEdit: (id: string, actorLabel: string, comment: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -165,14 +179,105 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDebtors((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   };
 
-  const updateDebtorsStatus = (ids: string[], status: DebtorStatus) => {
+  const appendAuditLog = (d: Debtor, action: string, actor: string): Debtor => {
+    const entry: AuditLogEntry = {
+      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      date: simulatedToday,
+      actor,
+      action,
+    };
+    return { ...d, auditLog: [...d.auditLog, entry] };
+  };
+
+  const updateDebtorsStatus = (
+    ids: string[],
+    status: DebtorStatus,
+    logAction: string,
+    actorLabel: string,
+  ) => {
     const idSet = new Set(ids);
-    setDebtors((prev) => prev.map((d) => (idSet.has(d.id) ? { ...d, status } : d)));
+    setDebtors((prev) =>
+      prev.map((d) => (idSet.has(d.id) ? appendAuditLog({ ...d, status }, logAction, actorLabel) : d)),
+    );
   };
 
   const deleteDebtors = (ids: string[]) => {
     const idSet = new Set(ids);
     setDebtors((prev) => prev.filter((d) => !idSet.has(d.id)));
+  };
+
+  const updateDebtorDetails = (
+    id: string,
+    patch: Pick<Debtor, 'caseReference' | 'reasonNonRecovery' | 'recoverySteps'>,
+    actorLabel: string,
+  ) => {
+    setDebtors((prev) =>
+      prev.map((d) => (d.id === id ? appendAuditLog({ ...d, ...patch }, 'Updated details', actorLabel) : d)),
+    );
+  };
+
+  const requestEdit = (id: string, proposal: DebtorEditProposal, actorLabel: string) => {
+    setDebtors((prev) =>
+      prev.map((d) =>
+        d.id === id
+          ? appendAuditLog(
+              { ...d, status: 'EDIT_REQUESTED', editProposal: proposal },
+              'Requested edit',
+              actorLabel,
+            )
+          : d,
+      ),
+    );
+  };
+
+  const approveEdit = (id: string, actorLabel: string) => {
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (d.id !== id || !d.editProposal) return d;
+        const proposal = d.editProposal;
+        // arEntries is omitted on the proposal when the AR amounts/dates
+        // weren't touched, so the original bucket distribution is kept as-is.
+        const arFields = proposal.arEntries
+          ? {
+              arEntries: proposal.arEntries,
+              notInArrears: 0,
+              arrears6m: 0,
+              arrears6to12m: 0,
+              arrears1to2y: 0,
+              arrears2to3y: 0,
+              arrears3to4y: 0,
+              arrears4to5y: 0,
+              arrears5yPlus: 0,
+              requiredPaidDate: undefined,
+              totalARAmount: undefined,
+            }
+          : {};
+        const applied: Debtor = {
+          ...d,
+          name: proposal.name,
+          natureId: proposal.natureId,
+          descriptionId: proposal.descriptionId,
+          ...arFields,
+          editProposal: undefined,
+          status: 'SUPPORTED',
+        };
+        return appendAuditLog(applied, 'Edit approved', actorLabel);
+      }),
+    );
+  };
+
+  const rejectEdit = (id: string, actorLabel: string, comment: string) => {
+    setDebtors((prev) =>
+      prev.map((d) =>
+        d.id === id
+          ? appendAuditLog(
+              { ...d, status: 'SUPPORTED', editProposal: undefined },
+              `Edit rejected: ${comment}`,
+              actorLabel,
+            )
+          : d,
+      ),
+    );
   };
 
   const value: AppContextValue = {
@@ -189,6 +294,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateDebtor,
     updateDebtorsStatus,
     deleteDebtors,
+    updateDebtorDetails,
+    requestEdit,
+    approveEdit,
+    rejectEdit,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

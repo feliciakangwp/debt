@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
 import { DebtorFormModal } from '../components/DebtorFormModal';
+import { DebtorDetailsModal } from '../components/DebtorDetailsModal';
 import { StatusBadge } from '../components/StatusBadge';
 import { formatCurrency } from '../utils/format';
 import { debtorAmountRows } from '../utils/aging';
@@ -28,7 +29,9 @@ export function DebtorListPage() {
     useApp();
   const [showNew, setShowNew] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
+  const [viewingDebtorId, setViewingDebtorId] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const viewingDebtor = viewingDebtorId ? (debtors.find((d) => d.id === viewingDebtorId) ?? null) : null;
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
@@ -91,7 +94,7 @@ export function DebtorListPage() {
 
   const handleSubmit = () => {
     if (selectedEligible.length === 0) return;
-    updateDebtorsStatus(selectedEligible, 'PENDING_REVIEW');
+    updateDebtorsStatus(selectedEligible, 'PENDING_REVIEW', 'Submitted for review', persona.label);
     setSelected(new Set());
   };
 
@@ -107,13 +110,13 @@ export function DebtorListPage() {
 
   const handleApprove = () => {
     if (selectedEligible.length === 0) return;
-    updateDebtorsStatus(selectedEligible, 'SUPPORTED');
+    updateDebtorsStatus(selectedEligible, 'SUPPORTED', 'Approved', persona.label);
     setSelected(new Set());
   };
 
   const handleReject = () => {
     if (selectedEligible.length === 0) return;
-    updateDebtorsStatus(selectedEligible, 'DRAFT');
+    updateDebtorsStatus(selectedEligible, 'DRAFT', 'Rejected', persona.label);
     setSelected(new Set());
   };
 
@@ -158,17 +161,16 @@ export function DebtorListPage() {
       header: 'Name',
       accessor: (r) => r.name,
       sortType: 'alpha',
-      render: (r) =>
-        canEdit && r.status === 'DRAFT' ? (
-          <button
-            onClick={() => setEditingDebtor(r.debtor)}
-            className="font-medium text-brand-navy underline decoration-dotted underline-offset-2 hover:text-brand-gold"
-          >
-            {r.name}
-          </button>
-        ) : (
-          r.name
-        ),
+      render: (r) => (
+        <button
+          onClick={() =>
+            canEdit && r.status === 'DRAFT' ? setEditingDebtor(r.debtor) : setViewingDebtorId(r.debtor.id)
+          }
+          className="font-medium text-brand-navy underline decoration-dotted underline-offset-2 hover:text-brand-gold"
+        >
+          {r.name}
+        </button>
+      ),
     },
     { key: 'department', header: 'Department', accessor: (r) => r.branch, sortType: 'alpha' },
     {
@@ -267,8 +269,7 @@ export function DebtorListPage() {
         {persona.role === 'FINANCE'
           ? 'Showing all branches.'
           : `Showing records for ${persona.branch} only.`}{' '}
-        Click a column header to sort.
-        {canEdit && " Click a draft debtor's name to edit that entry."}
+        Click a column header to sort. Click a debtor's name to view its details.
       </p>
 
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.key} />
@@ -286,6 +287,10 @@ export function DebtorListPage() {
           editDebtor={editingDebtor}
           onClose={() => setEditingDebtor(null)}
         />
+      )}
+
+      {viewingDebtor && (
+        <DebtorDetailsModal debtor={viewingDebtor} onClose={() => setViewingDebtorId(null)} />
       )}
     </div>
   );

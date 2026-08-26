@@ -4,12 +4,14 @@ const STATUS_STYLES: Record<DebtorStatus, string> = {
   DRAFT: 'bg-slate-200 text-slate-600',
   PENDING_REVIEW: 'bg-amber-100 text-amber-700',
   SUPPORTED: 'bg-emerald-100 text-emerald-700',
+  EDIT_REQUESTED: 'bg-sky-100 text-sky-700',
 };
 
 const STATUS_LABELS: Record<DebtorStatus, string> = {
   DRAFT: 'Draft',
   PENDING_REVIEW: 'Pending Review',
   SUPPORTED: 'Supported',
+  EDIT_REQUESTED: 'Edit Requested',
 };
 
 export function StatusBadge({ status }: { status: DebtorStatus }) {

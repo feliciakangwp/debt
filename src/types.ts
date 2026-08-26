@@ -47,7 +47,31 @@ export interface ReferenceItem {
   natureId?: string;
 }
 
-export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED';
+export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'EDIT_REQUESTED';
+
+/**
+ * A proposed change to an already-Supported debtor, awaiting Reviewer 1's
+ * decision. The debtor's live fields are left untouched until the proposal
+ * is approved, so reports keep showing the current data while a request is
+ * pending.
+ */
+export interface DebtorEditProposal {
+  name: string;
+  natureId: string;
+  descriptionId: string;
+  /** Omitted when the AR amounts/dates weren't touched (e.g. a legacy
+   * fixed-bucket record edited without setting a Required Paid Date), so
+   * the original bucket distribution is left untouched on approval. */
+  arEntries?: AREntry[];
+}
+
+export interface AuditLogEntry {
+  id: string;
+  /** Simulated-today snapshot at the time of the action, for display. */
+  date: string;
+  actor: string;
+  action: string;
+}
 
 export interface Debtor {
   id: string;
@@ -76,6 +100,9 @@ export interface Debtor {
    * bucket placement instead of the legacy fields above or the raw bucket
    * fields. */
   arEntries?: AREntry[];
+  /** Set while status is EDIT_REQUESTED: the changes Branch Rep asked for. */
+  editProposal?: DebtorEditProposal;
+  auditLog: AuditLogEntry[];
 }
 
 export interface AREntry {
