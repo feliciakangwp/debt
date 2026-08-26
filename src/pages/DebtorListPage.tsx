@@ -228,7 +228,7 @@ export function DebtorListPage() {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-brand-navy">Debtor List</h1>
+        <h1 className="text-2xl font-bold text-brand-navy">List of Debtors</h1>
         <div className="flex items-center gap-2">
           {persona.role === 'BRANCH_REP' && (
             <>
@@ -277,10 +277,8 @@ export function DebtorListPage() {
         </div>
       </div>
       <p className="mb-5 text-sm text-slate-500">
-        {persona.role === 'FINANCE'
-          ? 'Showing all branches.'
-          : `Showing records for ${persona.branch} only.`}{' '}
-        Click a column header to sort. Click a debtor's name to view its details.
+        Showing records for {persona.branch} only. Click a column header to sort. Click a
+        debtor's name to view its details.
       </p>
 
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.key} />

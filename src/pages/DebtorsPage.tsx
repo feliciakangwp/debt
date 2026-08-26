@@ -6,19 +6,25 @@ import { formatCurrency } from '../utils/format';
 import { totalAR, totalInArrears } from '../types';
 import type { Debtor } from '../types';
 import { resolveDebtorBuckets } from '../utils/aging';
-import { visibleDebtors } from '../utils/visibility';
+import { financeReportVisibleDebtors, visibleDebtors } from '../utils/visibility';
 import { StatusBadge } from '../components/StatusBadge';
 
-export function DebtorsPage() {
+interface DebtorsPageProps {
+  financeView?: boolean;
+}
+
+export function DebtorsPage({ financeView = false }: DebtorsPageProps) {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const visibleRows = useMemo(() => {
-    const scoped = visibleDebtors(persona, debtors);
+    const scoped = financeView
+      ? financeReportVisibleDebtors(persona, debtors)
+      : visibleDebtors(persona, debtors);
     return scoped.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
-  }, [debtors, persona, simulatedToday]);
+  }, [debtors, persona, simulatedToday, financeView]);
 
   const columns: ColumnDef<Debtor>[] = [
     {
@@ -144,9 +150,11 @@ export function DebtorsPage() {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-brand-navy">Debtor Report</h1>
+      <h1 className="mb-1 text-2xl font-bold text-brand-navy">
+        {financeView ? '(Fin) Debtors Report' : 'Debtors Report'}
+      </h1>
       <p className="mb-5 text-sm text-slate-500">
-        {persona.role === 'FINANCE'
+        {financeView
           ? 'Showing all branches.'
           : `Showing records for ${persona.branch} only.`}{' '}
         Click a column header to sort.

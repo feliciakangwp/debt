@@ -1,6 +1,6 @@
-export type Branch = 'PSB' | 'TIB' | 'SIB' | 'PCB';
+export type Branch = 'PSB' | 'TIB' | 'SIB' | 'PCB' | 'FIN';
 
-export const BRANCHES: Branch[] = ['PSB', 'TIB', 'SIB', 'PCB'];
+export const BRANCHES: Branch[] = ['PSB', 'TIB', 'SIB', 'PCB', 'FIN'];
 
 export type Role = 'BRANCH_REP' | 'CPM' | 'FINANCE' | 'REVIEWER_1';
 
@@ -32,7 +32,7 @@ export const PERSONAS: Persona[] = [
   })),
   {
     id: 'FINANCE',
-    label: 'Finance',
+    label: 'Finance Officer',
     role: 'FINANCE' as Role,
     branch: null,
   },

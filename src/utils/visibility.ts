@@ -25,3 +25,30 @@ export function canSeeDebtor(persona: Persona, debtor: Debtor): boolean {
 export function visibleDebtors(persona: Persona, debtors: Debtor[]): Debtor[] {
   return debtors.filter((d) => canSeeDebtor(persona, d));
 }
+
+/**
+ * Used only by the "(Fin)" oversight reports: same status-based rule as
+ * canSeeDebtor, but ignores branch scoping entirely so Finance Officer,
+ * Reviewer 1 FIN and CPM FIN see every branch's data there, while their
+ * other tabs (List of Debtors, Debtors Report, Arrears Report) stay
+ * scoped to their own branch as usual.
+ */
+export function financeReportVisibleDebtors(persona: Persona, debtors: Debtor[]): Debtor[] {
+  return debtors.filter((d) => STATUS_ALLOWED_ROLES[d.status].includes(persona.role));
+}
+
+/** Branch Rep / Reviewer 1 / CPM of any branch (including FIN) — the
+ * operational tabs: List of Debtors, Debtors Report, Arrears Report. */
+export function hasOperationalAccess(persona: Persona): boolean {
+  return persona.role !== 'FINANCE';
+}
+
+/** Finance Officer, plus Reviewer 1 FIN and CPM FIN — the finance-wide
+ * oversight tabs: (Fin) Debtors Report, (Fin) Arrears Report, Nature of
+ * Arrears, Description. */
+export function isFinanceTeamPersona(persona: Persona): boolean {
+  return (
+    persona.role === 'FINANCE' ||
+    (persona.branch === 'FIN' && (persona.role === 'REVIEWER_1' || persona.role === 'CPM'))
+  );
+}

@@ -6,7 +6,7 @@ import { aggregateDebtors, aggregatedTotalAR, aggregatedTotalInArrears } from '.
 import type { AggregatedRow } from '../utils/aggregate';
 import { formatCurrency } from '../utils/format';
 import { resolveDebtorBuckets } from '../utils/aging';
-import { visibleDebtors } from '../utils/visibility';
+import { financeReportVisibleDebtors, visibleDebtors } from '../utils/visibility';
 
 interface ArrearsSummaryPageProps {
   financeView?: boolean;
@@ -19,9 +19,11 @@ export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPagePr
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const scopedDebtors = useMemo(() => {
-    const base = visibleDebtors(persona, debtors);
+    const base = financeView
+      ? financeReportVisibleDebtors(persona, debtors)
+      : visibleDebtors(persona, debtors);
     return base.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
-  }, [debtors, persona, simulatedToday]);
+  }, [debtors, persona, simulatedToday, financeView]);
 
   const rows = useMemo(
     () => aggregateDebtors(scopedDebtors, !financeView),
@@ -145,14 +147,12 @@ export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPagePr
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold text-brand-navy">
-        {financeView ? 'List of AR / Arrears (FIN)' : 'Arrears Report'}
+        {financeView ? '(Fin) Arrears Report' : 'Arrears Report'}
       </h1>
       <p className="mb-5 text-sm text-slate-500">
         {financeView
           ? 'Aggregated across all branches by Nature of AR/ Arrears and Description. SB/Dept shown as SC.'
-          : persona.role === 'FINANCE'
-            ? 'Showing all branches, aggregated by SB/Dept, Nature and Description.'
-            : `Showing records for ${persona.branch} only, aggregated by Nature and Description.`}{' '}
+          : `Showing records for ${persona.branch} only, aggregated by Nature and Description.`}{' '}
         Click a column header to sort.
       </p>
 

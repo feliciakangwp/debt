@@ -1,6 +1,7 @@
 import { useApp } from '../context/AppContext';
 import { PERSONAS } from '../types';
 import { todayIso } from '../utils/aging';
+import { hasOperationalAccess, isFinanceTeamPersona } from '../utils/visibility';
 
 export type PageKey =
   | 'nature'
@@ -8,6 +9,7 @@ export type PageKey =
   | 'debtor-list'
   | 'debtors'
   | 'arrears'
+  | 'debtors-fin'
   | 'arrears-fin';
 
 interface NavItem {
@@ -23,15 +25,17 @@ interface SidebarProps {
 
 export function Sidebar({ active, onNavigate }: SidebarProps) {
   const { persona, setPersonaId, simulatedToday, setSimulatedToday } = useApp();
-  const isFinance = persona.role === 'FINANCE';
+  const operational = hasOperationalAccess(persona);
+  const financeTeam = isFinanceTeamPersona(persona);
 
   const items: NavItem[] = [
-    { key: 'debtor-list', label: 'Debtor List', visible: true },
-    { key: 'debtors', label: 'Debtor Report', visible: true },
-    { key: 'arrears', label: 'Arrears Report', visible: true },
-    { key: 'arrears-fin', label: 'List of AR / Arrears (FIN)', visible: isFinance },
-    { key: 'nature', label: 'Nature of Account/ Arrears', visible: isFinance },
-    { key: 'description', label: 'Description', visible: isFinance },
+    { key: 'debtor-list', label: 'List of Debtors', visible: operational },
+    { key: 'debtors', label: 'Debtors Report', visible: operational },
+    { key: 'arrears', label: 'Arrears Report', visible: operational },
+    { key: 'debtors-fin', label: '(Fin) Debtors Report', visible: financeTeam },
+    { key: 'arrears-fin', label: '(Fin) Arrears Report', visible: financeTeam },
+    { key: 'nature', label: 'Nature of Arrears', visible: financeTeam },
+    { key: 'description', label: 'Description', visible: financeTeam },
   ];
 
   return (
@@ -81,6 +85,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
+        <div className="mb-2 px-3 text-sm font-bold text-white">Debt Management</div>
         <ul className="space-y-1">
           {items
             .filter((i) => i.visible)
