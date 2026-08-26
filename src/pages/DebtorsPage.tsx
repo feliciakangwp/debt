@@ -22,6 +22,12 @@ export function DebtorsPage() {
 
   const columns: ColumnDef<Debtor>[] = [
     {
+      key: 'caseReference',
+      header: 'Case Reference',
+      accessor: (d) => d.caseReference,
+      sortType: 'alpha',
+    },
+    {
       key: 'status',
       header: 'Status',
       accessor: (d) => d.status,
@@ -132,12 +138,6 @@ export function DebtorsPage() {
       key: 'steps',
       header: 'Recovery steps taken',
       accessor: (d) => d.recoverySteps,
-      sortType: 'alpha',
-    },
-    {
-      key: 'caseReference',
-      header: 'Case Reference',
-      accessor: (d) => d.caseReference,
       sortType: 'alpha',
     },
   ];

@@ -22,6 +22,7 @@ interface DebtorEntryRow {
   requiredPaidDate: string;
   reasonNonRecovery: string;
   recoverySteps: string;
+  caseReference: string;
 }
 
 export function DebtorListPage() {
@@ -54,6 +55,7 @@ export function DebtorListPage() {
           requiredPaidDate: entry.requiredPaidDate,
           reasonNonRecovery: d.reasonNonRecovery,
           recoverySteps: d.recoverySteps,
+          caseReference: d.caseReference,
         });
       });
     }
@@ -149,6 +151,13 @@ export function DebtorListPage() {
   }
 
   columns.push(
+    {
+      key: 'caseReference',
+      header: 'Case Reference',
+      accessor: (r) => r.caseReference,
+      render: (r) => r.caseReference || '-',
+      sortType: 'alpha',
+    },
     {
       key: 'status',
       header: 'Status',

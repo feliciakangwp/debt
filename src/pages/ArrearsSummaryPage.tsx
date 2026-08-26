@@ -29,6 +29,12 @@ export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPagePr
   );
 
   const columns: ColumnDef<AggregatedRow>[] = [
+    {
+      key: 'caseReference',
+      header: 'Case Reference',
+      accessor: (r) => r.caseReference,
+      sortType: 'alpha',
+    },
     { key: 'branch', header: 'SB/Dept', accessor: (r) => r.branch, sortType: 'alpha' },
     {
       key: 'nature',
@@ -132,12 +138,6 @@ export function ArrearsSummaryPage({ financeView = false }: ArrearsSummaryPagePr
       key: 'steps',
       header: 'Recovery steps taken',
       accessor: (r) => r.recoverySteps,
-      sortType: 'alpha',
-    },
-    {
-      key: 'caseReference',
-      header: 'Case Reference',
-      accessor: (r) => r.caseReference,
       sortType: 'alpha',
     },
   ];
