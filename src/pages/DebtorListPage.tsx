@@ -164,7 +164,9 @@ export function DebtorListPage() {
       render: (r) => (
         <button
           onClick={() =>
-            canEdit && r.status === 'DRAFT' ? setEditingDebtor(r.debtor) : setViewingDebtorId(r.debtor.id)
+            canEdit && (r.status === 'DRAFT' || r.status === 'PENDING_REVIEW')
+              ? setEditingDebtor(r.debtor)
+              : setViewingDebtorId(r.debtor.id)
           }
           className="font-medium text-brand-navy underline decoration-dotted underline-offset-2 hover:text-brand-gold"
         >
