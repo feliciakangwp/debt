@@ -65,8 +65,13 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
 
   const isBranchRep = persona.role === 'BRANCH_REP';
   const isReviewer = persona.role === 'REVIEWER_1';
+  // Direct-edit fields and "Request to Edit" are only available once a
+  // record is Supported — Draft uses the full form instead, and a record
+  // that's still Pending Review or already has an edit pending shouldn't be
+  // changeable outside that review flow.
+  const canEditDetails = isBranchRep && debtor.status === 'SUPPORTED';
 
-  // --- Case Reference / Reason / Recovery Steps: always directly editable ---
+  // --- Case Reference / Reason / Recovery Steps: editable once Supported ---
   const [caseReference, setCaseReference] = useState(debtor.caseReference);
   const [reasonNonRecovery, setReasonNonRecovery] = useState(debtor.reasonNonRecovery);
   const [recoverySteps, setRecoverySteps] = useState(debtor.recoverySteps);
@@ -318,7 +323,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
             <input
               value={caseReference}
               onChange={(e) => setCaseReference(e.target.value)}
-              disabled={!isBranchRep}
+              disabled={!canEditDetails}
               className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none disabled:bg-slate-100"
               placeholder="Free text"
             />
@@ -331,7 +336,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
             <input
               value={reasonNonRecovery}
               onChange={(e) => setReasonNonRecovery(e.target.value)}
-              disabled={!isBranchRep}
+              disabled={!canEditDetails}
               className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none disabled:bg-slate-100"
             />
           </div>
@@ -343,7 +348,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
             <input
               value={recoverySteps}
               onChange={(e) => setRecoverySteps(e.target.value)}
-              disabled={!isBranchRep}
+              disabled={!canEditDetails}
               className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none disabled:bg-slate-100"
             />
           </div>
@@ -433,7 +438,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
             )
           ) : (
             <>
-              {isBranchRep && (
+              {canEditDetails && (
                 <button
                   onClick={handleSaveDetails}
                   disabled={!detailsChanged}
@@ -442,7 +447,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
                   Save
                 </button>
               )}
-              {isBranchRep && debtor.status === 'SUPPORTED' && (
+              {canEditDetails && (
                 <button
                   onClick={() => setRequestingEdit(true)}
                   className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95"
