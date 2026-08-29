@@ -567,3 +567,60 @@ test('Export button on every Call For Return / (Fin) Call For Return report tab 
   ]);
   expect(branchDownload.suggestedFilename()).toMatch(/^CallForReturn-Arrears-.*\.xlsx$/);
 });
+
+test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 supports -> Supported, then locks', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Branch Rep TIB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  const firstRow = page.locator('table tbody tr').first();
+  const debtorName = (await firstRow.locator('button').innerText()).trim();
+  await firstRow.locator('button').click();
+
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await expect(modal.locator('label', { hasText: 'Write Off' })).toBeVisible();
+  await modal.locator('button:has-text("Write Off")').click();
+
+  // Pick a write-off date comfortably after today so Days in Arrears (from
+  // the earliest arrear on record) comes out positive.
+  await modal.locator('input[type=date]').fill('2027-06-01');
+  await modal.locator('input[type=number]').fill('7500');
+  const daysBox = modal.locator('div.bg-slate-100');
+  await expect(daysBox).not.toHaveText('No arrears on record');
+  const daysText = (await daysBox.innerText()).trim();
+  expect(Number(daysText)).toBeGreaterThan(0);
+  await modal.getByPlaceholder('Free text').last().fill('Debtor untraceable, exhausted all recovery options');
+
+  const submitBtn = modal.locator('button:has-text("Submit")');
+  await expect(submitBtn).toBeEnabled();
+  await submitBtn.click();
+  await expect(modal.locator('span', { hasText: 'Pending' })).toBeVisible();
+  await expect(modal.locator('button:has-text("Write Off")')).toBeHidden();
+  await modal.locator('button:has-text("✕")').click();
+
+  // CPM (read-only for Write Off) sees it but can't act on it.
+  await setPersona(page, 'CPM TIB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
+  const cpmModal = page.locator('div.fixed.inset-0.z-50');
+  await expect(cpmModal.locator('span', { hasText: 'Pending' })).toBeVisible();
+  await expect(cpmModal.locator('button:has-text("Support")')).toBeHidden();
+  await cpmModal.locator('button:has-text("✕")').click();
+
+  // Reviewer 1 supports it.
+  await setPersona(page, 'Reviewer 1 TIB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
+  const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+  await reviewerModal.locator('button:has-text("Support")').click();
+  await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
+  await reviewerModal.locator('button:has-text("✕")').click();
+
+  // Branch Rep can no longer edit — no Write Off button, read-only Supported record.
+  await setPersona(page, 'Branch Rep TIB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
+  const finalModal = page.locator('div.fixed.inset-0.z-50');
+  await expect(finalModal.locator('button:has-text("Write Off")')).toBeHidden();
+  await expect(finalModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
+});

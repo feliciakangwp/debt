@@ -10,6 +10,7 @@ import type {
   DebtorStatus,
   Persona,
   ReferenceItem,
+  WriteOffRecord,
 } from '../types';
 import { BRANCHES, PERSONAS } from '../types';
 import { DEBTORS_SEED, DESCRIPTION_SEED, NATURE_SEED } from '../data/seed';
@@ -122,6 +123,12 @@ interface AppContextValue {
   requestEdit: (id: string, proposal: DebtorEditProposal, actorLabel: string) => void;
   approveEdit: (id: string, actorLabel: string) => void;
   rejectEdit: (id: string, actorLabel: string, comment: string) => void;
+  createWriteOff: (
+    id: string,
+    input: Pick<WriteOffRecord, 'dateOfWriteOff' | 'writeOffAmount' | 'daysInArrears' | 'reasonForWriteOff'>,
+    actorLabel: string,
+  ) => void;
+  supportWriteOff: (id: string, actorLabel: string) => void;
   callForReturnPeriods: CallForReturnPeriod[];
   addCallForReturnPeriod: (period: Omit<CallForReturnPeriod, 'id'>) => void;
   updateCallForReturnPeriod: (id: string, patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>) => void;
@@ -312,6 +319,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const createWriteOff = (
+    id: string,
+    input: Pick<WriteOffRecord, 'dateOfWriteOff' | 'writeOffAmount' | 'daysInArrears' | 'reasonForWriteOff'>,
+    actorLabel: string,
+  ) => {
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (d.id !== id) return d;
+        const writeOff: WriteOffRecord = {
+          id: `writeoff-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          status: 'PENDING',
+          ...input,
+        };
+        return appendAuditLog({ ...d, writeOff }, 'Write off submitted for review', actorLabel);
+      }),
+    );
+  };
+
+  const supportWriteOff = (id: string, actorLabel: string) => {
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (d.id !== id || !d.writeOff) return d;
+        return appendAuditLog(
+          { ...d, writeOff: { ...d.writeOff, status: 'SUPPORTED' } },
+          'Write off supported',
+          actorLabel,
+        );
+      }),
+    );
+  };
+
   const addCallForReturnPeriod = (period: Omit<CallForReturnPeriod, 'id'>) => {
     const id = `cfr-period-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setCallForReturnPeriods((prev) => [...prev, { ...period, id }]);
@@ -400,6 +438,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     requestEdit,
     approveEdit,
     rejectEdit,
+    createWriteOff,
+    supportWriteOff,
     callForReturnPeriods,
     addCallForReturnPeriod,
     updateCallForReturnPeriod,

@@ -108,7 +108,24 @@ export interface Debtor {
   arEntries?: AREntry[];
   /** Set while status is EDIT_REQUESTED: the changes Branch Rep asked for. */
   editProposal?: DebtorEditProposal;
+  /** Set once Branch Rep submits a Write Off for this debtor. One per
+   * debtor — Branch Rep can't edit it after submitting, only Reviewer 1
+   * (or Super Admin) can move it from Pending to Supported. */
+  writeOff?: WriteOffRecord;
   auditLog: AuditLogEntry[];
+}
+
+export type WriteOffStatus = 'PENDING' | 'SUPPORTED';
+
+export interface WriteOffRecord {
+  id: string;
+  status: WriteOffStatus;
+  dateOfWriteOff: string;
+  writeOffAmount: number;
+  /** Auto-computed from the debtor's earliest arrear date to
+   * dateOfWriteOff — not user-editable. */
+  daysInArrears: number;
+  reasonForWriteOff: string;
 }
 
 export interface AREntry {

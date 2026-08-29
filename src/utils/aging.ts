@@ -148,10 +148,58 @@ export function summarizeBuckets(buckets: AgingBuckets): string {
   return parts.length > 0 ? parts.join(' · ') : 'No amounts entered yet.';
 }
 
-export function todayIso(): string {
-  const d = new Date();
+function toIsoDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+export function todayIso(): string {
+  return toIsoDate(new Date());
+}
+
+/**
+ * The earliest date this debtor's arrears began accruing, used for Write
+ * Off's "Days in Arrears" calculation. Prefers an exact due date (from
+ * arEntries, or the legacy single requiredPaidDate) when the debtor has
+ * one — the earliest across all of them. Falls back to estimating from the
+ * oldest non-zero aging bucket relative to `today` for legacy records that
+ * only ever had bucket amounts entered directly, with no due date on file.
+ * Returns null when the debtor has no arrears at all — nothing to write off.
+ */
+export function firstArrearDate(d: Debtor, today: string): string | null {
+  const datedRows = debtorAmountRows(d).filter((r) => r.requiredPaidDate);
+  if (datedRows.length > 0) {
+    return datedRows.reduce(
+      (earliest, r) => (r.requiredPaidDate < earliest ? r.requiredPaidDate : earliest),
+      datedRows[0].requiredPaidDate,
+    );
+  }
+
+  const buckets = resolveDebtorBuckets(d, today);
+  const oldestBucketFirst: [keyof AgingBuckets, number][] = [
+    ['arrears5yPlus', 60],
+    ['arrears4to5y', 48],
+    ['arrears3to4y', 36],
+    ['arrears2to3y', 24],
+    ['arrears1to2y', 12],
+    ['arrears6to12m', 6],
+    ['arrears6m', 0],
+  ];
+  const now = parseDate(today);
+  for (const [key, monthsBack] of oldestBucketFirst) {
+    if (buckets[key] > 0) {
+      const estimated = new Date(now);
+      estimated.setMonth(estimated.getMonth() - monthsBack);
+      return toIsoDate(estimated);
+    }
+  }
+  return null;
+}
+
+/** Whole days from `from` to `to` (may be negative if `to` is earlier). */
+export function daysBetween(from: string, to: string): number {
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.round((parseDate(to).getTime() - parseDate(from).getTime()) / msPerDay);
 }

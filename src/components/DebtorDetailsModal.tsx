@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AREntriesEditor } from './AREntriesEditor';
-import { StatusBadge } from './StatusBadge';
+import { StatusBadge, WriteOffStatusBadge } from './StatusBadge';
 import { formatCurrency } from '../utils/format';
-import { debtorAmountRows, summarizeBuckets } from '../utils/aging';
+import { daysBetween, debtorAmountRows, firstArrearDate, summarizeBuckets } from '../utils/aging';
 import { isSuperAdmin } from '../utils/visibility';
 import type { AREntry, Debtor } from '../types';
 
@@ -56,6 +56,8 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
     requestEdit,
     approveEdit,
     rejectEdit,
+    createWriteOff,
+    supportWriteOff,
   } = useApp();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
@@ -171,6 +173,48 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
   const entriesChanged = proposal?.arEntries
     ? entriesSignature(proposal.arEntries) !== entriesSignature(currentEntries)
     : false;
+
+  // --- Write Off: Branch Rep submits, Reviewer 1 supports, one-shot ---
+  const [writingOff, setWritingOff] = useState(false);
+  const [writeOffDate, setWriteOffDate] = useState(simulatedToday);
+  const [writeOffAmount, setWriteOffAmount] = useState('');
+  const [writeOffReason, setWriteOffReason] = useState('');
+
+  const arrearStart = firstArrearDate(debtor, simulatedToday);
+  const daysInArrears = arrearStart ? daysBetween(arrearStart, writeOffDate) : null;
+  const canSubmitWriteOff =
+    writeOffDate !== '' &&
+    writeOffAmount.trim() !== '' &&
+    Number(writeOffAmount) > 0 &&
+    writeOffReason.trim() !== '' &&
+    daysInArrears !== null &&
+    daysInArrears >= 0;
+
+  const handleStartWriteOff = () => {
+    setWriteOffDate(simulatedToday);
+    setWriteOffAmount('');
+    setWriteOffReason('');
+    setWritingOff(true);
+  };
+
+  const handleSubmitWriteOff = () => {
+    if (!canSubmitWriteOff || daysInArrears === null) return;
+    createWriteOff(
+      debtor.id,
+      {
+        dateOfWriteOff: writeOffDate,
+        writeOffAmount: Number(writeOffAmount),
+        daysInArrears,
+        reasonForWriteOff: writeOffReason.trim(),
+      },
+      persona.label,
+    );
+    setWritingOff(false);
+  };
+
+  const handleSupportWriteOff = () => {
+    supportWriteOff(debtor.id, persona.label);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -384,6 +428,114 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
                   </div>
                 ))}
             </div>
+          </div>
+
+          <div className="col-span-2 border-t border-slate-200 pt-3">
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-500">Write Off</label>
+              {debtor.writeOff && <WriteOffStatusBadge status={debtor.writeOff.status} />}
+            </div>
+
+            {debtor.writeOff ? (
+              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-400">Date of Write Off</div>
+                    <div className="text-slate-700">{debtor.writeOff.dateOfWriteOff}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-400">Write Off Amount</div>
+                    <div className="text-slate-700">{formatCurrency(debtor.writeOff.writeOffAmount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-400">Days in Arrears</div>
+                    <div className="text-slate-700">{debtor.writeOff.daysInArrears}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-xs font-semibold text-slate-400">Reasons for Write-Offs</div>
+                    <div className="text-slate-700">{debtor.writeOff.reasonForWriteOff}</div>
+                  </div>
+                </div>
+                {isReviewer && debtor.writeOff.status === 'PENDING' && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleSupportWriteOff}
+                      className="rounded-md border border-emerald-300 px-4 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Support
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : writingOff ? (
+              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Date of Write Off</label>
+                    <input
+                      type="date"
+                      value={writeOffDate}
+                      onChange={(e) => setWriteOffDate(e.target.value)}
+                      className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Write Off Amount</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={writeOffAmount}
+                      onChange={(e) => setWriteOffAmount(e.target.value)}
+                      placeholder="0"
+                      className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Days in Arrears</label>
+                    <div className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm text-slate-500">
+                      {daysInArrears !== null ? daysInArrears : 'No arrears on record'}
+                    </div>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Reasons for Write-Offs</label>
+                    <input
+                      value={writeOffReason}
+                      onChange={(e) => setWriteOffReason(e.target.value)}
+                      placeholder="Free text"
+                      className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setWritingOff(false)}
+                    className="rounded-md border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitWriteOff}
+                    disabled={!canSubmitWriteOff}
+                    className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Submit
+                  </button>
+                </div>
+              </div>
+            ) : isBranchRep ? (
+              arrearStart ? (
+                <button
+                  onClick={handleStartWriteOff}
+                  className="rounded-md border border-brand-navy/30 px-4 py-1.5 text-sm font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
+                >
+                  Write Off
+                </button>
+              ) : (
+                <p className="text-xs text-slate-400">No arrears on record for this debtor — nothing to write off.</p>
+              )
+            ) : (
+              <p className="text-xs text-slate-400">No write-off has been submitted for this debtor.</p>
+            )}
           </div>
         </div>
 
