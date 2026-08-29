@@ -7,7 +7,7 @@ const SUBMISSION_STYLES: Record<CfrSubmissionStatus, string> = {
   APPROVED: 'bg-emerald-100 text-emerald-700',
 };
 
-const SUBMISSION_LABELS: Record<CfrSubmissionStatus, string> = {
+export const SUBMISSION_LABELS: Record<CfrSubmissionStatus, string> = {
   DRAFT: 'Draft',
   PENDING_REVIEW: 'Pending Review',
   SUPPORTED: 'Supported',

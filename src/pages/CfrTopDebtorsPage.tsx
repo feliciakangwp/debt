@@ -10,6 +10,7 @@ export function CfrTopDebtorsPage({ consolidated }: CfrTopDebtorsPageProps) {
     <CfrDebtorReportPage
       consolidated={consolidated}
       title={consolidated ? 'Top 10 Debtors ((Fin) Call For Return)' : 'Top 10 Debtors (Call For Return)'}
+      reportLabel="Top 10 Debtors"
       selectRows={selectTop10Debtors}
     />
   );

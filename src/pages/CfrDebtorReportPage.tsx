@@ -2,13 +2,14 @@ import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
-import { CfrStatusBadge } from '../components/CfrStatusBadge';
+import { CfrStatusBadge, SUBMISSION_LABELS } from '../components/CfrStatusBadge';
 import {
   CfrActionButtons,
   CfrRejectBox,
   CfrRejectionNotice,
   CfrSuperAdminPanel,
 } from '../components/CfrSubmissionPanel';
+import { ExportButton } from '../components/ExportButton';
 import { useCfrSubmissionWorkflow } from '../hooks/useCfrSubmissionWorkflow';
 import { formatCurrency } from '../utils/format';
 import { resolveDebtorBuckets } from '../utils/aging';
@@ -23,13 +24,16 @@ interface CfrDebtorReportPageProps {
    * workflow. */
   consolidated: boolean;
   title: string;
+  /** Short name used to build the exported file name and sheet name, e.g.
+   * "Top 10 Debtors" or "Arrears > 5 Years". */
+  reportLabel: string;
   /** Filters/sorts the branch-scoped, aging-resolved debtor list into what
    * this report should show (e.g. top 10 by Total in Arrears, or every
    * debtor with an Arrears >= 5 years balance). */
   selectRows: (debtors: Debtor[]) => Debtor[];
 }
 
-export function CfrDebtorReportPage({ consolidated, title, selectRows }: CfrDebtorReportPageProps) {
+export function CfrDebtorReportPage({ consolidated, title, reportLabel, selectRows }: CfrDebtorReportPageProps) {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
   const workflow = useCfrSubmissionWorkflow();
   const { activePeriod, statusByBranch } = workflow;
@@ -54,6 +58,10 @@ export function CfrDebtorReportPage({ consolidated, title, selectRows }: CfrDebt
       key: 'status',
       header: 'Status',
       accessor: (d) => statusByBranch.get(d.branch)?.status ?? '',
+      exportValue: (d) => {
+        const status = statusByBranch.get(d.branch)?.status;
+        return status ? SUBMISSION_LABELS[status] : '';
+      },
       render: (d) => {
         const status = statusByBranch.get(d.branch)?.status;
         return status ? <CfrStatusBadge status={status} /> : null;
@@ -134,7 +142,15 @@ export function CfrDebtorReportPage({ consolidated, title, selectRows }: CfrDebt
     <div>
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-brand-navy">{title}</h1>
-        <div className="flex items-center gap-2">{!consolidated && <CfrActionButtons workflow={workflow} />}</div>
+        <div className="flex items-center gap-2">
+          {!consolidated && <CfrActionButtons workflow={workflow} />}
+          <ExportButton
+            fileName={`${consolidated ? 'FinCallForReturn' : 'CallForReturn'}-${reportLabel.replace(/\s+/g, '')}-${simulatedToday}.xlsx`}
+            sheetName={reportLabel}
+            columns={columns}
+            rows={rows}
+          />
+        </div>
       </div>
       <p className="mb-1 text-sm text-slate-500">Report generated on {simulatedToday}.</p>
       <p className="mb-5 text-sm text-slate-500">

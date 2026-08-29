@@ -91,19 +91,35 @@ function Shell() {
         {page === 'cfr-fin-arrears' && <CfrArrearsPage consolidated />}
         {page === 'cfr-fin-top10-debtors' && <CfrTopDebtorsPage consolidated />}
         {page === 'cfr-fin-arrears-5y' && <CfrArrears5YearsPage consolidated />}
-        {page === 'cfr-fin-loans-advances' && <PlaceholderPage title="Loans and Advances (CFR-FIN)" />}
-        {page === 'cfr-fin-written-off' && <PlaceholderPage title="Written Off (CFR-FIN)" />}
-        {page === 'cfr-fin-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" />}
-        {page === 'cfr-fin-to-be-written-off' && <PlaceholderPage title="To be Written Off (CFR-FIN)" />}
+        {page === 'cfr-fin-loans-advances' && (
+          <PlaceholderPage title="Loans and Advances (CFR-FIN)" exportFileName="FinCallForReturn-LoansAndAdvances.xlsx" />
+        )}
+        {page === 'cfr-fin-written-off' && (
+          <PlaceholderPage title="Written Off (CFR-FIN)" exportFileName="FinCallForReturn-WrittenOff.xlsx" />
+        )}
+        {page === 'cfr-fin-top10-written-off' && (
+          <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" exportFileName="FinCallForReturn-Top10WrittenOff.xlsx" />
+        )}
+        {page === 'cfr-fin-to-be-written-off' && (
+          <PlaceholderPage title="To be Written Off (CFR-FIN)" exportFileName="FinCallForReturn-ToBeWrittenOff.xlsx" />
+        )}
         {page === 'cfr-fin-reports' && <CfrReportsPage consolidated />}
 
         {page === 'cfr-arrears' && <CfrArrearsPage consolidated={false} />}
         {page === 'cfr-top10-debtors' && <CfrTopDebtorsPage consolidated={false} />}
         {page === 'cfr-arrears-5y' && <CfrArrears5YearsPage consolidated={false} />}
-        {page === 'cfr-loans-advances' && <PlaceholderPage title="Loans and Advances (CFR)" />}
-        {page === 'cfr-written-off' && <PlaceholderPage title="Written Off (CFR)" />}
-        {page === 'cfr-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR)" />}
-        {page === 'cfr-to-be-written-off' && <PlaceholderPage title="To be Written Off (CFR)" />}
+        {page === 'cfr-loans-advances' && (
+          <PlaceholderPage title="Loans and Advances (CFR)" exportFileName="CallForReturn-LoansAndAdvances.xlsx" />
+        )}
+        {page === 'cfr-written-off' && (
+          <PlaceholderPage title="Written Off (CFR)" exportFileName="CallForReturn-WrittenOff.xlsx" />
+        )}
+        {page === 'cfr-top10-written-off' && (
+          <PlaceholderPage title="Top 10 Written Off (CFR)" exportFileName="CallForReturn-Top10WrittenOff.xlsx" />
+        )}
+        {page === 'cfr-to-be-written-off' && (
+          <PlaceholderPage title="To be Written Off (CFR)" exportFileName="CallForReturn-ToBeWrittenOff.xlsx" />
+        )}
         {page === 'cfr-reports' && <CfrReportsPage consolidated={false} />}
       </main>
     </div>

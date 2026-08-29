@@ -2,13 +2,14 @@ import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
-import { CfrStatusBadge } from '../components/CfrStatusBadge';
+import { CfrStatusBadge, SUBMISSION_LABELS } from '../components/CfrStatusBadge';
 import {
   CfrActionButtons,
   CfrRejectBox,
   CfrRejectionNotice,
   CfrSuperAdminPanel,
 } from '../components/CfrSubmissionPanel';
+import { ExportButton } from '../components/ExportButton';
 import { useCfrSubmissionWorkflow } from '../hooks/useCfrSubmissionWorkflow';
 import { formatCurrency } from '../utils/format';
 import { resolveDebtorBuckets } from '../utils/aging';
@@ -51,6 +52,16 @@ export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
       key: 'status',
       header: 'Status',
       accessor: (r) => (r.branch === 'SC' ? '' : (statusByBranch.get(r.branch as Branch)?.status ?? '')),
+      exportValue: (r) => {
+        if (r.branch !== 'SC') {
+          const status = statusByBranch.get(r.branch as Branch)?.status;
+          return status ? SUBMISSION_LABELS[status] : '';
+        }
+        const distinct = Array.from(
+          new Set(r.branches.map((b) => statusByBranch.get(b)?.status).filter((s): s is CfrSubmissionStatus => !!s)),
+        );
+        return distinct.map((s) => SUBMISSION_LABELS[s]).join(', ');
+      },
       render: (r) => {
         if (r.branch !== 'SC') {
           const status = statusByBranch.get(r.branch as Branch)?.status;
@@ -162,7 +173,15 @@ export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
     <div>
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-brand-navy">{title}</h1>
-        <div className="flex items-center gap-2">{!consolidated && <CfrActionButtons workflow={workflow} />}</div>
+        <div className="flex items-center gap-2">
+          {!consolidated && <CfrActionButtons workflow={workflow} />}
+          <ExportButton
+            fileName={`${consolidated ? 'FinCallForReturn' : 'CallForReturn'}-Arrears-${simulatedToday}.xlsx`}
+            sheetName="Arrears"
+            columns={columns}
+            rows={rows}
+          />
+        </div>
       </div>
       <p className="mb-1 text-sm text-slate-500">Report generated on {simulatedToday}.</p>
       <p className="mb-5 text-sm text-slate-500">

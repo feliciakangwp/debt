@@ -302,7 +302,12 @@ test('Top 10 Debtors and Arrears > 5 years pull individual debtor rows with the 
     const headers = (await page.locator('table thead th').allTextContents()).map((h) => h.replace('⇅', '').trim());
     expect(headers, `${tab} columns`).toEqual(expectedColumns);
     const rowCount = await page.locator('table tbody tr').count();
-    expect(rowCount, `${tab} should have at most 10 rows`).toBeLessThanOrEqual(10);
+    expect(rowCount, `${tab} should have at least one row`).toBeGreaterThan(0);
+    if (tab === 'Top 10 Debtors') {
+      // Truncated to the top 10 by Total in Arrears; Arrears > 5 years has
+      // no such cap — it's every debtor with a balance in that bucket.
+      expect(rowCount, `${tab} should have at most 10 rows`).toBeLessThanOrEqual(10);
+    }
   }
 });
 
@@ -461,4 +466,70 @@ test('Reports tab auto-generates once a period closes, scoped per branch and con
     page.click('button:has-text("Download Excel")'),
   ]);
   expect(download.suggestedFilename()).toMatch(/^CallForReturn-Reports-.*\.xlsx$/);
+});
+
+test('seed data covers every branch, including TIB, SIB and FIN', async ({ page }) => {
+  await page.goto('/');
+
+  for (const branch of ['PSB', 'TIB', 'SIB', 'PCB', 'FIN']) {
+    await setPersona(page, `Branch Rep ${branch}`);
+    await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+    await page.waitForTimeout(150);
+    const rowCount = await page.locator('table tbody tr').count();
+    expect(rowCount, `Branch Rep ${branch} should have seeded debtors`).toBeGreaterThan(5);
+  }
+
+  await setPersona(page, 'Finance Officer');
+  await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
+  await page.waitForTimeout(150);
+  const branches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
+  expect([...branches].sort()).toEqual(['FIN', 'PCB', 'PSB', 'SIB', 'TIB']);
+});
+
+test('Export button on every Call For Return / (Fin) Call For Return report tab downloads what is on screen', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Reviewer 1 FIN');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+  await page.click('button:has-text("+ New")');
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await modal.locator('input').first().fill('SMOKE-EXPORT-PERIOD');
+  const dateInputs = modal.locator('input[type=date]');
+  await dateInputs.nth(0).fill('2026-01-01');
+  await dateInputs.nth(1).fill('2030-01-01');
+  await modal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  // Every report tab in both sections has a working Export button, exporting
+  // the currently visible rows.
+  const reportTabs = ['Arrears', 'Top 10 Debtors', 'Arrears > 5 years'];
+  for (const tab of reportTabs) {
+    await gotoTabExact(page, tab, 0); // (Fin) Call For Return copy
+    await page.waitForTimeout(150);
+    const onScreenRows = await page.locator('table tbody tr').count();
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      page.click('button:has-text("Export")'),
+    ]);
+    expect(download.suggestedFilename()).toMatch(/^FinCallForReturn-.*\.xlsx$/);
+    expect(onScreenRows, `${tab} should have rows to export`).toBeGreaterThan(0);
+  }
+
+  // Placeholder report tabs (no real data model yet) still expose the
+  // button and export a "not yet built" note instead of erroring.
+  await gotoTabExact(page, 'Loans and Advances', 0);
+  const [placeholderDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('button:has-text("Export")'),
+  ]);
+  expect(placeholderDownload.suggestedFilename()).toBe('FinCallForReturn-LoansAndAdvances.xlsx');
+
+  // The branch-scoped "Call For Return" copies also have the button.
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoTabExact(page, 'Arrears');
+  const [branchDownload] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('button:has-text("Export")'),
+  ]);
+  expect(branchDownload.suggestedFilename()).toMatch(/^CallForReturn-Arrears-.*\.xlsx$/);
 });

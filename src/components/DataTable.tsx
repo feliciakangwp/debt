@@ -5,6 +5,10 @@ export interface ColumnDef<T> {
   header: React.ReactNode;
   accessor: (row: T) => string | number;
   render?: (row: T) => React.ReactNode;
+  /** Value used when exporting this column to Excel, if it should differ
+   * from `accessor` (e.g. a status code exported as its display label).
+   * Defaults to `accessor`. */
+  exportValue?: (row: T) => string | number;
   sortType?: 'alpha' | 'numeric';
   align?: 'left' | 'right' | 'center';
   /** Set to false for non-data columns (e.g. row-selection checkboxes) to disable click-to-sort. Defaults to true. */

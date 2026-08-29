@@ -10,6 +10,7 @@ export function CfrArrears5YearsPage({ consolidated }: CfrArrears5YearsPageProps
     <CfrDebtorReportPage
       consolidated={consolidated}
       title={consolidated ? 'Arrears > 5 years ((Fin) Call For Return)' : 'Arrears > 5 years (Call For Return)'}
+      reportLabel="Arrears > 5 Years"
       selectRows={selectArrearsOver5Years}
     />
   );
