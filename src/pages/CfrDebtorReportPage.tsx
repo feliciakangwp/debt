@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
-import { StatusBadge } from '../components/StatusBadge';
+import { CfrStatusBadge } from '../components/CfrStatusBadge';
 import {
   CfrActionButtons,
   CfrRejectBox,
@@ -32,7 +32,7 @@ interface CfrDebtorReportPageProps {
 export function CfrDebtorReportPage({ consolidated, title, selectRows }: CfrDebtorReportPageProps) {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
   const workflow = useCfrSubmissionWorkflow();
-  const { activePeriod } = workflow;
+  const { activePeriod, statusByBranch } = workflow;
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
@@ -48,10 +48,16 @@ export function CfrDebtorReportPage({ consolidated, title, selectRows }: CfrDebt
 
   const columns: ColumnDef<Debtor>[] = [
     {
+      // This is the branch's Call for Return approval status (Draft/Pending
+      // Review/Supported/Approved) — a separate workflow from the Debtor
+      // List's own status, not the individual debtor's list-level status.
       key: 'status',
       header: 'Status',
-      accessor: (d) => d.status,
-      render: (d) => <StatusBadge status={d.status} />,
+      accessor: (d) => statusByBranch.get(d.branch)?.status ?? '',
+      render: (d) => {
+        const status = statusByBranch.get(d.branch)?.status;
+        return status ? <CfrStatusBadge status={status} /> : null;
+      },
       sortType: 'alpha',
     },
     { key: 'branch', header: 'SB/Dept', accessor: (d) => d.branch, sortType: 'alpha' },

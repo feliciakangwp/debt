@@ -306,6 +306,44 @@ test('Top 10 Debtors and Arrears > 5 years pull individual debtor rows with the 
   }
 });
 
+test('Top 10 Debtors / Arrears > 5 years Status column tracks the CFR submission, not the Debtor List status', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Finance Officer');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+  await page.click('button:has-text("+ New")');
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await modal.locator('input').first().fill('SMOKE-STATUS-SPLIT');
+  const dateInputs = modal.locator('input[type=date]');
+  await dateInputs.nth(0).fill('2026-01-01');
+  await dateInputs.nth(1).fill('2030-01-01');
+  await modal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  // Seed debtors are all "Supported" on the Debtor List. Before any CFR
+  // submit, the CFR status must still read Draft here — it's a separate
+  // approval process from the Debtor List's own status.
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoTabExact(page, 'Arrears > 5 years');
+  await expect(page.locator('table tbody tr').first()).toBeVisible();
+  const statusCellsBefore = await page.locator('table tbody tr td:first-child').allTextContents();
+  expect(statusCellsBefore.every((t) => t.trim() === 'Draft'), `expected all Draft, got ${statusCellsBefore}`).toBe(true);
+
+  await page.click('button:has-text("Submit")');
+  await page.waitForTimeout(200);
+  const statusCellsAfter = await page.locator('table tbody tr td:first-child').allTextContents();
+  expect(
+    statusCellsAfter.every((t) => t.trim() === 'Pending Review'),
+    `expected all Pending Review, got ${statusCellsAfter}`,
+  ).toBe(true);
+
+  // The (Fin) consolidated copy takes its per-row status from the same
+  // branch submissions.
+  await setPersona(page, 'Finance Officer');
+  await gotoTabExact(page, 'Arrears > 5 years');
+  await expect(page.locator('main')).toContainText('Pending Review');
+});
+
 test('Reviewer reject on CFR arrears sends it back to Draft', async ({ page }) => {
   await page.goto('/');
 
