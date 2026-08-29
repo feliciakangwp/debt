@@ -10,6 +10,7 @@ import { CallForReturnPeriodPage } from './pages/CallForReturnPeriodPage';
 import { CfrArrearsPage } from './pages/CfrArrearsPage';
 import { CfrTopDebtorsPage } from './pages/CfrTopDebtorsPage';
 import { CfrArrears5YearsPage } from './pages/CfrArrears5YearsPage';
+import { CfrReportsPage } from './pages/CfrReportsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
@@ -94,7 +95,7 @@ function Shell() {
         {page === 'cfr-fin-written-off' && <PlaceholderPage title="Written Off (CFR-FIN)" />}
         {page === 'cfr-fin-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" />}
         {page === 'cfr-fin-to-be-written-off' && <PlaceholderPage title="To be Written Off (CFR-FIN)" />}
-        {page === 'cfr-fin-reports' && <PlaceholderPage title="Reports (CFR-FIN)" />}
+        {page === 'cfr-fin-reports' && <CfrReportsPage consolidated />}
 
         {page === 'cfr-arrears' && <CfrArrearsPage consolidated={false} />}
         {page === 'cfr-top10-debtors' && <CfrTopDebtorsPage consolidated={false} />}
@@ -103,7 +104,7 @@ function Shell() {
         {page === 'cfr-written-off' && <PlaceholderPage title="Written Off (CFR)" />}
         {page === 'cfr-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR)" />}
         {page === 'cfr-to-be-written-off' && <PlaceholderPage title="To be Written Off (CFR)" />}
-        {page === 'cfr-reports' && <PlaceholderPage title="Reports (CFR)" />}
+        {page === 'cfr-reports' && <CfrReportsPage consolidated={false} />}
       </main>
     </div>
   );

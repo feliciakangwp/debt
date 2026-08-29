@@ -1,12 +1,5 @@
 import { CfrDebtorReportPage } from './CfrDebtorReportPage';
-import { totalInArrears } from '../types';
-import type { Debtor } from '../types';
-
-function selectTop10(debtors: Debtor[]): Debtor[] {
-  return [...debtors]
-    .sort((a, b) => totalInArrears(b) - totalInArrears(a))
-    .slice(0, 10);
-}
+import { selectTop10Debtors } from '../utils/cfrReportSelectors';
 
 interface CfrTopDebtorsPageProps {
   consolidated: boolean;
@@ -17,7 +10,7 @@ export function CfrTopDebtorsPage({ consolidated }: CfrTopDebtorsPageProps) {
     <CfrDebtorReportPage
       consolidated={consolidated}
       title={consolidated ? 'Top 10 Debtors ((Fin) Call For Return)' : 'Top 10 Debtors (Call For Return)'}
-      selectRows={selectTop10}
+      selectRows={selectTop10Debtors}
     />
   );
 }

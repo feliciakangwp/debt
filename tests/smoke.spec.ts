@@ -385,3 +385,80 @@ test('Reviewer reject on CFR arrears sends it back to Draft', async ({ page }) =
   await gotoTabExact(page, 'Top 10 Debtors');
   await expect(page.locator('main')).toContainText('Please recheck the figures');
 });
+
+test('Reports tab auto-generates once a period closes, scoped per branch and consolidated for (Fin)', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Reviewer 1 FIN');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+  await page.click('button:has-text("+ New")');
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await modal.locator('input').first().fill('SMOKE-REPORTS-PERIOD');
+  const dateInputs = modal.locator('input[type=date]');
+  await dateInputs.nth(0).fill('2026-01-01');
+  await dateInputs.nth(1).fill('2030-01-01');
+  await modal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  // While the period is open, no reports are generated yet for it.
+  await gotoTabExact(page, 'Reports');
+  await expect(page.locator('main')).toContainText('No closed Call for Return periods yet.');
+
+  // A branch visiting Arrears is what creates that branch's (and every
+  // other branch's) CFR submission record for the period.
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoTabExact(page, 'Arrears');
+  await page.waitForTimeout(150);
+
+  // Close the period by editing its End Date into the past.
+  await setPersona(page, 'Reviewer 1 FIN');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+  const periodRow = page.locator('tr', { hasText: 'SMOKE-REPORTS-PERIOD' }).first();
+  await periodRow.locator('button', { hasText: 'SMOKE-REPORTS-PERIOD' }).click();
+  const editModal = page.locator('div.fixed.inset-0.z-50');
+  const editDates = editModal.locator('input[type=date]');
+  await editDates.nth(0).fill('2020-01-01');
+  await editDates.nth(1).fill('2020-06-01');
+  await editModal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+  await expect(periodRow.locator('span', { hasText: 'Closed' })).toBeVisible();
+
+  const expectedReports = [
+    'Arrears', 'Top 10 Debtors', 'Arrears > 5 Years', 'Loans & Advances',
+    'Written Off', 'Top 10 Written Off', 'To be Written Off',
+  ];
+
+  // Branch Rep PSB's Call For Return Reports tab now lists all 7 reports
+  // for this period.
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoTabExact(page, 'Reports');
+  await expect(page.locator('table tbody tr')).toHaveCount(7);
+  const periodCol = await page.locator('table tbody tr td:nth-child(2)').allTextContents();
+  expect(periodCol.every((t) => t.trim() === 'SMOKE-REPORTS-PERIOD')).toBe(true);
+  const reportCol = (await page.locator('table tbody tr td:nth-child(3)').allTextContents()).map((t) => t.trim());
+  expect(reportCol).toEqual(expectedReports);
+
+  // Every branch got a submission record when Branch Rep PSB opened
+  // Arrears, so Branch Rep TIB (who never visited anything for this
+  // period) also sees their own 7 rows.
+  await setPersona(page, 'Branch Rep TIB');
+  await gotoTabExact(page, 'Reports');
+  await expect(page.locator('table tbody tr')).toHaveCount(7);
+
+  // The (Fin) consolidated Reports tab shows the same period/report list.
+  await setPersona(page, 'Finance Officer');
+  await gotoTabExact(page, 'Reports');
+  await expect(page.locator('table tbody tr')).toHaveCount(7);
+
+  // Selecting rows and downloading produces an xlsx file.
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoTabExact(page, 'Reports');
+  const checkboxes = page.locator('table tbody tr input[type=checkbox]');
+  await checkboxes.nth(0).check();
+  await checkboxes.nth(1).check();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.click('button:has-text("Download Excel")'),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^CallForReturn-Reports-.*\.xlsx$/);
+});
