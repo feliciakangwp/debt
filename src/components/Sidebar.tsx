@@ -1,7 +1,7 @@
 import { useApp } from '../context/AppContext';
 import { PERSONAS } from '../types';
 import { todayIso } from '../utils/aging';
-import { hasOperationalAccess, isFinanceTeamPersona } from '../utils/visibility';
+import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from '../utils/visibility';
 
 export type PageKey =
   | 'nature'
@@ -9,12 +9,34 @@ export type PageKey =
   | 'debtor-list'
   | 'debtors'
   | 'arrears'
-  | 'arrears-fin';
+  | 'arrears-fin'
+  | 'cfr-fin-period'
+  | 'cfr-fin-arrears'
+  | 'cfr-fin-top10-debtors'
+  | 'cfr-fin-arrears-5y'
+  | 'cfr-fin-loans-advances'
+  | 'cfr-fin-written-off'
+  | 'cfr-fin-top10-written-off'
+  | 'cfr-fin-to-be-written-off'
+  | 'cfr-fin-reports'
+  | 'cfr-arrears'
+  | 'cfr-top10-debtors'
+  | 'cfr-arrears-5y'
+  | 'cfr-loans-advances'
+  | 'cfr-written-off'
+  | 'cfr-top10-written-off'
+  | 'cfr-to-be-written-off'
+  | 'cfr-reports';
 
 interface NavItem {
   key: PageKey;
   label: string;
   visible: boolean;
+}
+
+interface NavGroup {
+  header: string;
+  items: NavItem[];
 }
 
 interface SidebarProps {
@@ -26,14 +48,47 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   const { persona, setPersonaId, simulatedToday, setSimulatedToday } = useApp();
   const operational = hasOperationalAccess(persona);
   const financeTeam = isFinanceTeamPersona(persona);
+  const cfr = hasCfrAccess(persona);
 
-  const items: NavItem[] = [
-    { key: 'debtor-list', label: 'List of Debtors', visible: operational },
-    { key: 'debtors', label: 'Debtors Report', visible: operational || financeTeam },
-    { key: 'arrears', label: 'Arrears Report', visible: operational },
-    { key: 'arrears-fin', label: '(Fin) Arrears Report', visible: financeTeam },
-    { key: 'nature', label: 'Nature of Arrears', visible: financeTeam },
-    { key: 'description', label: 'Description', visible: financeTeam },
+  const groups: NavGroup[] = [
+    {
+      header: 'Debt Management',
+      items: [
+        { key: 'debtor-list', label: 'List of Debtors', visible: operational },
+        { key: 'debtors', label: 'Debtors Report', visible: operational || financeTeam },
+        { key: 'arrears', label: 'Arrears Report', visible: operational },
+        { key: 'arrears-fin', label: '(Fin) Arrears Report', visible: financeTeam },
+        { key: 'nature', label: 'Nature of Arrears', visible: financeTeam },
+        { key: 'description', label: 'Description', visible: financeTeam },
+      ],
+    },
+    {
+      header: 'Debt Management (CFR-FIN)',
+      items: [
+        { key: 'cfr-fin-period', label: 'Call for Return Period', visible: financeTeam },
+        { key: 'cfr-fin-arrears', label: 'Arrears', visible: financeTeam },
+        { key: 'cfr-fin-top10-debtors', label: 'Top 10 Debtors', visible: financeTeam },
+        { key: 'cfr-fin-arrears-5y', label: 'Arrears > 5 years', visible: financeTeam },
+        { key: 'cfr-fin-loans-advances', label: 'Loans and Advances', visible: financeTeam },
+        { key: 'cfr-fin-written-off', label: 'Written Off', visible: financeTeam },
+        { key: 'cfr-fin-top10-written-off', label: 'Top 10 Written Off', visible: financeTeam },
+        { key: 'cfr-fin-to-be-written-off', label: 'To be Written Off', visible: financeTeam },
+        { key: 'cfr-fin-reports', label: 'Reports', visible: financeTeam },
+      ],
+    },
+    {
+      header: 'Debt Management (CFR)',
+      items: [
+        { key: 'cfr-arrears', label: 'Arrears', visible: cfr },
+        { key: 'cfr-top10-debtors', label: 'Top 10 Debtors', visible: cfr },
+        { key: 'cfr-arrears-5y', label: 'Arrears > 5 years', visible: cfr },
+        { key: 'cfr-loans-advances', label: 'Loans and Advances', visible: cfr },
+        { key: 'cfr-written-off', label: 'Written Off', visible: cfr },
+        { key: 'cfr-top10-written-off', label: 'Top 10 Written Off', visible: cfr },
+        { key: 'cfr-to-be-written-off', label: 'To be Written Off', visible: cfr },
+        { key: 'cfr-reports', label: 'Reports', visible: cfr },
+      ],
+    },
   ];
 
   return (
@@ -83,25 +138,31 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        <div className="mb-2 px-3 text-sm font-bold text-white">Debt Management</div>
-        <ul className="space-y-1">
-          {items
-            .filter((i) => i.visible)
-            .map((item) => (
-              <li key={item.key}>
-                <button
-                  onClick={() => onNavigate(item.key)}
-                  className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                    active === item.key
-                      ? 'bg-brand-gold font-semibold text-brand-navy'
-                      : 'text-white/85 hover:bg-white/10'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              </li>
-            ))}
-        </ul>
+        {groups.map((group) => {
+          const visibleItems = group.items.filter((i) => i.visible);
+          if (visibleItems.length === 0) return null;
+          return (
+            <div key={group.header} className="mb-4 last:mb-0">
+              <div className="mb-2 px-3 text-sm font-bold text-white">{group.header}</div>
+              <ul className="space-y-1">
+                {visibleItems.map((item) => (
+                  <li key={item.key}>
+                    <button
+                      onClick={() => onNavigate(item.key)}
+                      className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                        active === item.key
+                          ? 'bg-brand-gold font-semibold text-brand-navy'
+                          : 'text-white/85 hover:bg-white/10'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
       </nav>
 
       <div className="border-t border-white/10 px-5 py-3 text-xs text-white/40">

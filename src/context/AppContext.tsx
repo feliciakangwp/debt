@@ -1,7 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AuditLogEntry, Debtor, DebtorEditProposal, DebtorStatus, Persona, ReferenceItem } from '../types';
-import { PERSONAS } from '../types';
+import type {
+  AuditLogEntry,
+  CallForReturnPeriod,
+  CfrArrearsSubmission,
+  CfrSubmissionStatus,
+  Debtor,
+  DebtorEditProposal,
+  DebtorStatus,
+  Persona,
+  ReferenceItem,
+} from '../types';
+import { BRANCHES, PERSONAS } from '../types';
 import {
   DEBTORS_SEED,
   DESCRIPTION_ID_MIGRATION,
@@ -23,6 +33,8 @@ interface PersistedState {
   personaId: string;
   simulatedToday: string;
   dataVersion: number;
+  callForReturnPeriods: CallForReturnPeriod[];
+  cfrArrearsSubmissions: CfrArrearsSubmission[];
 }
 
 function migrateDebtorDescriptionIds(debtors: Debtor[]): Debtor[] {
@@ -63,6 +75,8 @@ function loadInitial(): PersistedState {
           personaId: parsed.personaId ?? 'FINANCE',
           simulatedToday: parsed.simulatedToday ?? todayIso(),
           dataVersion: DATA_VERSION,
+          callForReturnPeriods: parsed.callForReturnPeriods ?? [],
+          cfrArrearsSubmissions: parsed.cfrArrearsSubmissions ?? [],
         };
       }
       return {
@@ -72,6 +86,8 @@ function loadInitial(): PersistedState {
         personaId: parsed.personaId ?? 'FINANCE',
         simulatedToday: parsed.simulatedToday ?? todayIso(),
         dataVersion: DATA_VERSION,
+        callForReturnPeriods: parsed.callForReturnPeriods ?? [],
+        cfrArrearsSubmissions: parsed.cfrArrearsSubmissions ?? [],
       };
     }
   } catch {
@@ -84,6 +100,8 @@ function loadInitial(): PersistedState {
     personaId: 'FINANCE',
     simulatedToday: todayIso(),
     dataVersion: DATA_VERSION,
+    callForReturnPeriods: [],
+    cfrArrearsSubmissions: [],
   };
 }
 
@@ -114,6 +132,13 @@ interface AppContextValue {
   requestEdit: (id: string, proposal: DebtorEditProposal, actorLabel: string) => void;
   approveEdit: (id: string, actorLabel: string) => void;
   rejectEdit: (id: string, actorLabel: string, comment: string) => void;
+  callForReturnPeriods: CallForReturnPeriod[];
+  addCallForReturnPeriod: (period: Omit<CallForReturnPeriod, 'id'>) => void;
+  cfrArrearsSubmissions: CfrArrearsSubmission[];
+  ensureCfrSubmissionsForPeriod: (periodId: string, actorLabel: string) => void;
+  submitCfrArrears: (id: string, actorLabel: string) => void;
+  approveCfrArrears: (id: string, actorLabel: string) => void;
+  rejectCfrArrears: (id: string, actorLabel: string, comment: string) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -131,6 +156,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [debtors, setDebtors] = useState<Debtor[]>(initial.debtors);
   const [simulatedToday, setSimulatedToday] = useState<string>(initial.simulatedToday);
+  const [callForReturnPeriods, setCallForReturnPeriods] = useState<CallForReturnPeriod[]>(
+    initial.callForReturnPeriods,
+  );
+  const [cfrArrearsSubmissions, setCfrArrearsSubmissions] = useState<CfrArrearsSubmission[]>(
+    initial.cfrArrearsSubmissions,
+  );
 
   useEffect(() => {
     const state: PersistedState = {
@@ -140,9 +171,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       personaId,
       simulatedToday,
       dataVersion: DATA_VERSION,
+      callForReturnPeriods,
+      cfrArrearsSubmissions,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [natureList, descriptionList, debtors, personaId, simulatedToday]);
+  }, [
+    natureList,
+    descriptionList,
+    debtors,
+    personaId,
+    simulatedToday,
+    callForReturnPeriods,
+    cfrArrearsSubmissions,
+  ]);
 
   const persona = useMemo(
     () => PERSONAS.find((p) => p.id === personaId) ?? PERSONAS[PERSONAS.length - 1],
@@ -179,14 +220,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDebtors((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   };
 
-  const appendAuditLog = (d: Debtor, action: string, actor: string): Debtor => {
+  const appendAuditLog = <T extends { auditLog: AuditLogEntry[] }>(item: T, action: string, actor: string): T => {
     const entry: AuditLogEntry = {
       id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       date: simulatedToday,
       actor,
       action,
     };
-    return { ...d, auditLog: [...d.auditLog, entry] };
+    return { ...item, auditLog: [...item.auditLog, entry] };
   };
 
   const updateDebtorsStatus = (
@@ -280,6 +321,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const addCallForReturnPeriod = (period: Omit<CallForReturnPeriod, 'id'>) => {
+    const id = `cfr-period-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setCallForReturnPeriods((prev) => [...prev, { ...period, id }]);
+  };
+
+  // Idempotently makes sure every branch has a Draft submission for the
+  // given period, so the finance-wide views show a complete picture as soon
+  // as a Call for Return period opens, rather than only once each Branch Rep
+  // happens to visit.
+  const ensureCfrSubmissionsForPeriod = (periodId: string, actorLabel: string) => {
+    setCfrArrearsSubmissions((prev) => {
+      const existingBranches = new Set(
+        prev.filter((s) => s.periodId === periodId).map((s) => s.branch),
+      );
+      const missing = BRANCHES.filter((b) => !existingBranches.has(b));
+      if (missing.length === 0) return prev;
+      const created = missing.map((branch) =>
+        appendAuditLog<CfrArrearsSubmission>(
+          {
+            id: `cfr-submission-${Date.now()}-${branch}-${Math.random().toString(36).slice(2, 7)}`,
+            periodId,
+            branch,
+            status: 'DRAFT',
+            auditLog: [],
+          },
+          'Call for Return period opened',
+          actorLabel,
+        ),
+      );
+      return [...prev, ...created];
+    });
+  };
+
+  const setCfrSubmissionStatus = (
+    id: string,
+    status: CfrSubmissionStatus,
+    logAction: string,
+    actorLabel: string,
+  ) => {
+    setCfrArrearsSubmissions((prev) =>
+      prev.map((s) => (s.id === id ? appendAuditLog({ ...s, status }, logAction, actorLabel) : s)),
+    );
+  };
+
+  const submitCfrArrears = (id: string, actorLabel: string) => {
+    setCfrSubmissionStatus(id, 'PENDING_REVIEW', 'Submitted for review', actorLabel);
+  };
+
+  const approveCfrArrears = (id: string, actorLabel: string) => {
+    setCfrArrearsSubmissions((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const nextStatus: CfrSubmissionStatus = s.status === 'PENDING_REVIEW' ? 'SUPPORTED' : 'APPROVED';
+        const logAction = nextStatus === 'SUPPORTED' ? 'Approved by Reviewer 1' : 'Approved by Reviewer 2 (CPM)';
+        return appendAuditLog({ ...s, status: nextStatus }, logAction, actorLabel);
+      }),
+    );
+  };
+
+  const rejectCfrArrears = (id: string, actorLabel: string, comment: string) => {
+    setCfrSubmissionStatus(id, 'DRAFT', `Rejected: ${comment}`, actorLabel);
+  };
+
   const value: AppContextValue = {
     persona,
     setPersonaId,
@@ -298,6 +402,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     requestEdit,
     approveEdit,
     rejectEdit,
+    callForReturnPeriods,
+    addCallForReturnPeriod,
+    cfrArrearsSubmissions,
+    ensureCfrSubmissionsForPeriod,
+    submitCfrArrears,
+    approveCfrArrears,
+    rejectCfrArrears,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

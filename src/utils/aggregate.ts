@@ -4,6 +4,10 @@ import { ARREARS_BUCKET_KEYS } from '../types';
 export interface AggregatedRow {
   key: string;
   branch: Branch | 'SC';
+  /** Distinct branches whose debtors contributed to this row — always just
+   * [branch] when includeBranch is true; the full contributing set when
+   * branch is 'SC' (rows consolidated across branches). */
+  branches: Branch[];
   natureId: string;
   descriptionId: string;
   notInArrears: number;
@@ -47,6 +51,7 @@ export function aggregateDebtors(debtors: Debtor[], includeBranch: boolean): Agg
     rows.push({
       key,
       branch: includeBranch ? group[0].branch : 'SC',
+      branches: Array.from(new Set(group.map((d) => d.branch))).sort(),
       natureId: group[0].natureId,
       descriptionId: group[0].descriptionId,
       notInArrears: sum((d) => d.notInArrears),

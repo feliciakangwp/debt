@@ -2,7 +2,7 @@ export type Branch = 'PSB' | 'TIB' | 'SIB' | 'PCB' | 'FIN';
 
 export const BRANCHES: Branch[] = ['PSB', 'TIB', 'SIB', 'PCB', 'FIN'];
 
-export type Role = 'BRANCH_REP' | 'CPM' | 'FINANCE' | 'REVIEWER_1';
+export type Role = 'BRANCH_REP' | 'CPM' | 'FINANCE' | 'REVIEWER_1' | 'SUPER_ADMIN';
 
 export interface Persona {
   id: string;
@@ -34,6 +34,12 @@ export const PERSONAS: Persona[] = [
     id: 'FINANCE',
     label: 'Finance Officer',
     role: 'FINANCE' as Role,
+    branch: null,
+  },
+  {
+    id: 'SUPER_ADMIN',
+    label: 'Super Admin',
+    role: 'SUPER_ADMIN' as Role,
     branch: null,
   },
 ];
@@ -127,4 +133,32 @@ export function totalInArrears(d: Debtor): number {
 
 export function totalAR(d: Debtor): number {
   return (d.notInArrears || 0) + totalInArrears(d);
+}
+
+/** A Call for Return submission window. Status is never stored — it's always
+ * computed live from startDate/endDate against the simulated today's date. */
+export interface CallForReturnPeriod {
+  id: string;
+  /** Free text, e.g. "2026-01" — displayed as "Submission Year-Month". */
+  name: string;
+  startDate: string;
+  endDate: string;
+}
+
+export type CallForReturnStatus = 'OPEN' | 'CLOSED';
+
+export type CfrSubmissionStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'APPROVED';
+
+/** One branch's Call for Return arrears submission for a given period.
+ * Draft -> Pending Review (Branch Rep submits) -> Supported (Reviewer 1
+ * approves) -> Approved (CPM, acting as Reviewer 2, approves). A reject by
+ * either reviewer sends it back to Draft. The underlying arrears figures are
+ * not snapshotted here — they're the branch's live arrears data, aggregated
+ * the same way as Arrears Report; this record only tracks the review status. */
+export interface CfrArrearsSubmission {
+  id: string;
+  periodId: string;
+  branch: Branch;
+  status: CfrSubmissionStatus;
+  auditLog: AuditLogEntry[];
 }

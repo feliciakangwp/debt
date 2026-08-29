@@ -7,7 +7,7 @@ import { DebtorDetailsModal } from '../components/DebtorDetailsModal';
 import { StatusBadge } from '../components/StatusBadge';
 import { formatCurrency } from '../utils/format';
 import { debtorAmountRows } from '../utils/aging';
-import { visibleDebtors } from '../utils/visibility';
+import { isSuperAdmin, visibleDebtors } from '../utils/visibility';
 import type { Debtor, DebtorStatus } from '../types';
 
 interface DebtorEntryRow {
@@ -62,19 +62,24 @@ export function DebtorListPage() {
     return out;
   }, [scopedDebtors]);
 
-  const canCreate = persona.role === 'BRANCH_REP';
-  const canEdit = persona.role === 'BRANCH_REP';
+  const canActAsBranchRep = persona.role === 'BRANCH_REP' || isSuperAdmin(persona);
+  const canActAsReviewer = persona.role === 'REVIEWER_1' || isSuperAdmin(persona);
+  const canCreate = canActAsBranchRep;
+  const canEdit = canActAsBranchRep;
 
-  // The status a row must be in for the current persona to act on it via the
-  // checkbox + bulk action buttons: Branch Rep acts on their own Drafts,
-  // Reviewer 1 acts on Pending Review items. Everyone else is read-only.
-  const actionableStatus: DebtorStatus | null =
-    persona.role === 'BRANCH_REP' ? 'DRAFT' : persona.role === 'REVIEWER_1' ? 'PENDING_REVIEW' : null;
+  // Statuses the current persona can act on via the checkbox + bulk action
+  // buttons: Branch Rep acts on their own Drafts, Reviewer 1 acts on Pending
+  // Review items, Super Admin gets both. Everyone else is read-only.
+  const actionableStatuses: DebtorStatus[] = [
+    ...(canActAsBranchRep ? (['DRAFT'] as const) : []),
+    ...(canActAsReviewer ? (['PENDING_REVIEW'] as const) : []),
+  ];
 
   const eligibleIds = useMemo(() => {
-    if (!actionableStatus) return new Set<string>();
-    return new Set(rows.filter((r) => r.status === actionableStatus).map((r) => r.debtor.id));
-  }, [rows, actionableStatus]);
+    if (actionableStatuses.length === 0) return new Set<string>();
+    return new Set(rows.filter((r) => actionableStatuses.includes(r.status)).map((r) => r.debtor.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, canActAsBranchRep, canActAsReviewer]);
 
   const toggleRow = (debtorId: string) => {
     setSelected((prev) => {
@@ -92,39 +97,47 @@ export function DebtorListPage() {
     setSelected(allEligibleSelected ? new Set() : new Set(eligibleIds));
   };
 
-  const selectedEligible = [...selected].filter((id) => eligibleIds.has(id));
+  // Bulk actions each narrow the selection to the specific status they act
+  // on, since Super Admin can have both Draft and Pending Review rows
+  // selected at once.
+  const selectedWithStatus = (status: DebtorStatus) =>
+    [...selected].filter((id) => rows.some((r) => r.debtor.id === id && r.status === status));
 
   const handleSubmit = () => {
-    if (selectedEligible.length === 0) return;
-    updateDebtorsStatus(selectedEligible, 'PENDING_REVIEW', 'Submitted for review', persona.label);
+    const ids = selectedWithStatus('DRAFT');
+    if (ids.length === 0) return;
+    updateDebtorsStatus(ids, 'PENDING_REVIEW', 'Submitted for review', persona.label);
     setSelected(new Set());
   };
 
   const handleDelete = () => {
-    if (selectedEligible.length === 0) return;
-    const count = selectedEligible.length;
+    const ids = selectedWithStatus('DRAFT');
+    if (ids.length === 0) return;
+    const count = ids.length;
     if (!window.confirm(`Delete ${count} draft ${count === 1 ? 'entry' : 'entries'}? This cannot be undone.`)) {
       return;
     }
-    deleteDebtors(selectedEligible);
+    deleteDebtors(ids);
     setSelected(new Set());
   };
 
   const handleApprove = () => {
-    if (selectedEligible.length === 0) return;
-    updateDebtorsStatus(selectedEligible, 'SUPPORTED', 'Approved', persona.label);
+    const ids = selectedWithStatus('PENDING_REVIEW');
+    if (ids.length === 0) return;
+    updateDebtorsStatus(ids, 'SUPPORTED', 'Approved', persona.label);
     setSelected(new Set());
   };
 
   const handleReject = () => {
-    if (selectedEligible.length === 0) return;
-    updateDebtorsStatus(selectedEligible, 'DRAFT', 'Rejected', persona.label);
+    const ids = selectedWithStatus('PENDING_REVIEW');
+    if (ids.length === 0) return;
+    updateDebtorsStatus(ids, 'DRAFT', 'Rejected', persona.label);
     setSelected(new Set());
   };
 
   const columns: ColumnDef<DebtorEntryRow>[] = [];
 
-  if (actionableStatus) {
+  if (actionableStatuses.length > 0) {
     columns.push({
       key: 'select',
       sortable: false,
@@ -139,7 +152,7 @@ export function DebtorListPage() {
       ),
       accessor: () => '',
       render: (r) =>
-        r.status === actionableStatus ? (
+        actionableStatuses.includes(r.status) ? (
           <input
             type="checkbox"
             checked={selected.has(r.debtor.id)}
@@ -230,36 +243,36 @@ export function DebtorListPage() {
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-brand-navy">List of Debtors</h1>
         <div className="flex items-center gap-2">
-          {persona.role === 'BRANCH_REP' && (
+          {canActAsBranchRep && (
             <>
               <button
                 onClick={handleDelete}
-                disabled={selectedEligible.length === 0}
+                disabled={selectedWithStatus('DRAFT').length === 0}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Delete
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={selectedEligible.length === 0}
+                disabled={selectedWithStatus('DRAFT').length === 0}
                 className="rounded-md border border-brand-navy/30 px-4 py-2 text-sm font-semibold text-brand-navy hover:bg-brand-navy hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Submit
               </button>
             </>
           )}
-          {persona.role === 'REVIEWER_1' && (
+          {canActAsReviewer && (
             <>
               <button
                 onClick={handleReject}
-                disabled={selectedEligible.length === 0}
+                disabled={selectedWithStatus('PENDING_REVIEW').length === 0}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Reject
               </button>
               <button
                 onClick={handleApprove}
-                disabled={selectedEligible.length === 0}
+                disabled={selectedWithStatus('PENDING_REVIEW').length === 0}
                 className="rounded-md border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Approve
@@ -277,8 +290,8 @@ export function DebtorListPage() {
         </div>
       </div>
       <p className="mb-5 text-sm text-slate-500">
-        Showing records for {persona.branch} only. Click a column header to sort. Click a
-        debtor's name to view its details.
+        {persona.branch ? `Showing records for ${persona.branch} only.` : 'Showing all branches.'}{' '}
+        Click a column header to sort. Click a debtor's name to view its details.
       </p>
 
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.key} />

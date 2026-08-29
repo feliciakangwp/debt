@@ -6,12 +6,38 @@ import { ReferenceListPage } from './pages/ReferenceListPage';
 import { DebtorListPage } from './pages/DebtorListPage';
 import { DebtorsPage } from './pages/DebtorsPage';
 import { ArrearsSummaryPage } from './pages/ArrearsSummaryPage';
-import { hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
+import { CallForReturnPeriodPage } from './pages/CallForReturnPeriodPage';
+import { CfrArrearsPage } from './pages/CfrArrearsPage';
+import { PlaceholderPage } from './pages/PlaceholderPage';
+import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
 // 'debtors' is reachable by both audiences: operational roles see their own
 // branch, the finance team sees every branch (handled inside DebtorsPage).
 const OPERATIONAL_ONLY_PAGES: PageKey[] = ['debtor-list', 'arrears'];
-const FINANCE_TEAM_ONLY_PAGES: PageKey[] = ['arrears-fin', 'nature', 'description'];
+const FINANCE_TEAM_ONLY_PAGES: PageKey[] = [
+  'arrears-fin',
+  'nature',
+  'description',
+  'cfr-fin-period',
+  'cfr-fin-arrears',
+  'cfr-fin-top10-debtors',
+  'cfr-fin-arrears-5y',
+  'cfr-fin-loans-advances',
+  'cfr-fin-written-off',
+  'cfr-fin-top10-written-off',
+  'cfr-fin-to-be-written-off',
+  'cfr-fin-reports',
+];
+const CFR_PAGES: PageKey[] = [
+  'cfr-arrears',
+  'cfr-top10-debtors',
+  'cfr-arrears-5y',
+  'cfr-loans-advances',
+  'cfr-written-off',
+  'cfr-top10-written-off',
+  'cfr-to-be-written-off',
+  'cfr-reports',
+];
 
 function Shell() {
   const { persona } = useApp();
@@ -27,7 +53,9 @@ function Shell() {
           ? operational
           : FINANCE_TEAM_ONLY_PAGES.includes(page)
             ? financeTeam
-            : true;
+            : CFR_PAGES.includes(page)
+              ? hasCfrAccess(persona)
+              : true;
     if (!allowed) {
       setPage(operational ? 'debtor-list' : 'debtors');
     }
@@ -55,6 +83,25 @@ function Shell() {
         {page === 'debtors' && <DebtorsPage />}
         {page === 'arrears' && <ArrearsSummaryPage />}
         {page === 'arrears-fin' && <ArrearsSummaryPage financeView />}
+
+        {page === 'cfr-fin-period' && <CallForReturnPeriodPage />}
+        {page === 'cfr-fin-arrears' && <CfrArrearsPage consolidated />}
+        {page === 'cfr-fin-top10-debtors' && <PlaceholderPage title="Top 10 Debtors (CFR-FIN)" />}
+        {page === 'cfr-fin-arrears-5y' && <PlaceholderPage title="Arrears > 5 years (CFR-FIN)" />}
+        {page === 'cfr-fin-loans-advances' && <PlaceholderPage title="Loans and Advances (CFR-FIN)" />}
+        {page === 'cfr-fin-written-off' && <PlaceholderPage title="Written Off (CFR-FIN)" />}
+        {page === 'cfr-fin-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" />}
+        {page === 'cfr-fin-to-be-written-off' && <PlaceholderPage title="To be Written Off (CFR-FIN)" />}
+        {page === 'cfr-fin-reports' && <PlaceholderPage title="Reports (CFR-FIN)" />}
+
+        {page === 'cfr-arrears' && <CfrArrearsPage consolidated={false} />}
+        {page === 'cfr-top10-debtors' && <PlaceholderPage title="Top 10 Debtors (CFR)" />}
+        {page === 'cfr-arrears-5y' && <PlaceholderPage title="Arrears > 5 years (CFR)" />}
+        {page === 'cfr-loans-advances' && <PlaceholderPage title="Loans and Advances (CFR)" />}
+        {page === 'cfr-written-off' && <PlaceholderPage title="Written Off (CFR)" />}
+        {page === 'cfr-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR)" />}
+        {page === 'cfr-to-be-written-off' && <PlaceholderPage title="To be Written Off (CFR)" />}
+        {page === 'cfr-reports' && <PlaceholderPage title="Reports (CFR)" />}
       </main>
     </div>
   );

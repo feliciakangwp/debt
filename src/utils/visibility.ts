@@ -16,7 +16,15 @@ const STATUS_ALLOWED_ROLES: Record<DebtorStatus, Role[]> = {
   EDIT_REQUESTED: ['BRANCH_REP', 'REVIEWER_1', 'CPM', 'FINANCE'],
 };
 
+/** Super Admin sees and can act on everything, everywhere, with no
+ * restriction — a standing rule that applies to every module, including
+ * ones built after this. */
+export function isSuperAdmin(persona: Persona): boolean {
+  return persona.role === 'SUPER_ADMIN';
+}
+
 export function canSeeDebtor(persona: Persona, debtor: Debtor): boolean {
+  if (isSuperAdmin(persona)) return true;
   const branchMatches = persona.role === 'FINANCE' || persona.branch === debtor.branch;
   if (!branchMatches) return false;
   return STATUS_ALLOWED_ROLES[debtor.status].includes(persona.role);
@@ -34,21 +42,37 @@ export function visibleDebtors(persona: Persona, debtors: Debtor[]): Debtor[] {
  * scoped to their own branch as usual.
  */
 export function financeReportVisibleDebtors(persona: Persona, debtors: Debtor[]): Debtor[] {
+  if (isSuperAdmin(persona)) return debtors;
   return debtors.filter((d) => STATUS_ALLOWED_ROLES[d.status].includes(persona.role));
 }
 
-/** Branch Rep / Reviewer 1 / CPM of any branch (including FIN) — the
- * operational tabs: List of Debtors, Debtors Report, Arrears Report. */
+/** Branch Rep / Reviewer 1 / CPM of any branch (including FIN), plus Super
+ * Admin — the operational tabs: List of Debtors, Debtors Report, Arrears
+ * Report. */
 export function hasOperationalAccess(persona: Persona): boolean {
   return persona.role !== 'FINANCE';
 }
 
-/** Finance Officer, plus Reviewer 1 FIN and CPM FIN — the finance-wide
- * oversight tabs: (Fin) Debtors Report, (Fin) Arrears Report, Nature of
- * Arrears, Description. */
+/** Finance Officer, Reviewer 1 FIN, CPM FIN, and Super Admin — the
+ * finance-wide oversight tabs: Debtors Report (cross-branch), (Fin) Arrears
+ * Report, Nature of Arrears, Description, and the Debt Management (CFR-FIN)
+ * section. */
 export function isFinanceTeamPersona(persona: Persona): boolean {
   return (
+    isSuperAdmin(persona) ||
     persona.role === 'FINANCE' ||
     (persona.branch === 'FIN' && (persona.role === 'REVIEWER_1' || persona.role === 'CPM'))
+  );
+}
+
+/** Branch Rep, Reviewer 1, CPM, Finance Officer, and Super Admin — everyone
+ * except (today, none) — the Debt Management (CFR) section. */
+export function hasCfrAccess(persona: Persona): boolean {
+  return (
+    isSuperAdmin(persona) ||
+    persona.role === 'BRANCH_REP' ||
+    persona.role === 'REVIEWER_1' ||
+    persona.role === 'CPM' ||
+    persona.role === 'FINANCE'
   );
 }

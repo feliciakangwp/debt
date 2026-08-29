@@ -4,6 +4,7 @@ import { AREntriesEditor } from './AREntriesEditor';
 import { StatusBadge } from './StatusBadge';
 import { formatCurrency } from '../utils/format';
 import { debtorAmountRows, summarizeBuckets } from '../utils/aging';
+import { isSuperAdmin } from '../utils/visibility';
 import type { AREntry, Debtor } from '../types';
 
 interface DebtorDetailsModalProps {
@@ -63,8 +64,8 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
   const descriptionsForNature = (nId: string) =>
     descriptionList.filter((d) => d.active && d.natureId === nId);
 
-  const isBranchRep = persona.role === 'BRANCH_REP';
-  const isReviewer = persona.role === 'REVIEWER_1';
+  const isBranchRep = persona.role === 'BRANCH_REP' || isSuperAdmin(persona);
+  const isReviewer = persona.role === 'REVIEWER_1' || isSuperAdmin(persona);
   // Direct-edit fields and "Request to Edit" are only available once a
   // record is Supported — Draft uses the full form instead, and a record
   // that's still Pending Review or already has an edit pending shouldn't be
