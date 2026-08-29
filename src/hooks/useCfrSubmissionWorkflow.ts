@@ -65,6 +65,21 @@ export function useCfrSubmissionWorkflow() {
   const ownSubmission = persona.branch ? statusByBranch.get(persona.branch) : undefined;
   const ownAction = ownSubmission ? nextActionFor(ownSubmission.status, persona.role) : null;
 
+  // Surfaces the reviewer's rejection reason to the Branch Rep (and anyone
+  // else viewing that branch's submission) once it's back in Draft, so they
+  // know why before resubmitting. Cleared as soon as the submission moves
+  // past Draft again.
+  const rejectionNotice = useMemo(() => {
+    if (!ownSubmission || ownSubmission.status !== 'DRAFT') return null;
+    const lastEntry = ownSubmission.auditLog[ownSubmission.auditLog.length - 1];
+    if (!lastEntry || !lastEntry.action.startsWith('Rejected: ')) return null;
+    return {
+      actor: lastEntry.actor,
+      date: lastEntry.date,
+      comment: lastEntry.action.slice('Rejected: '.length),
+    };
+  }, [ownSubmission]);
+
   const handleSubmit = (id: string) => submitCfrArrears(id, persona.label);
   const handleApprove = (id: string) => approveCfrArrears(id, persona.label);
   const handleConfirmReject = () => {
@@ -79,6 +94,7 @@ export function useCfrSubmissionWorkflow() {
     statusByBranch,
     ownSubmission,
     ownAction,
+    rejectionNotice,
     rejectingId,
     setRejectingId,
     rejectComment,

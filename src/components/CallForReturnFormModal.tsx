@@ -2,25 +2,35 @@ import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { computeCallForReturnStatus } from '../utils/callForReturn';
 import { CallForReturnStatusBadge } from './CfrStatusBadge';
+import type { CallForReturnPeriod } from '../types';
 
 interface CallForReturnFormModalProps {
   onClose: () => void;
+  /** When set, the modal edits this period's Start/End Date instead of
+   * creating a new one — Name is fixed and shown read-only. */
+  period?: CallForReturnPeriod;
 }
 
-export function CallForReturnFormModal({ onClose }: CallForReturnFormModalProps) {
-  const { addCallForReturnPeriod, simulatedToday } = useApp();
-  const [name, setName] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+export function CallForReturnFormModal({ onClose, period }: CallForReturnFormModalProps) {
+  const { addCallForReturnPeriod, updateCallForReturnPeriod, simulatedToday } = useApp();
+  const isEdit = !!period;
+  const [name, setName] = useState(period?.name ?? '');
+  const [startDate, setStartDate] = useState(period?.startDate ?? '');
+  const [endDate, setEndDate] = useState(period?.endDate ?? '');
 
   const previewStatus =
     startDate && endDate ? computeCallForReturnStatus(startDate, endDate, simulatedToday) : null;
 
-  const canSave = name.trim() !== '' && startDate !== '' && endDate !== '' && startDate <= endDate;
+  const canSave =
+    (isEdit || name.trim() !== '') && startDate !== '' && endDate !== '' && startDate <= endDate;
 
   const handleSave = () => {
     if (!canSave) return;
-    addCallForReturnPeriod({ name: name.trim(), startDate, endDate });
+    if (isEdit) {
+      updateCallForReturnPeriod(period.id, { startDate, endDate });
+    } else {
+      addCallForReturnPeriod({ name: name.trim(), startDate, endDate });
+    }
     onClose();
   };
 
@@ -28,7 +38,9 @@ export function CallForReturnFormModal({ onClose }: CallForReturnFormModalProps)
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-md rounded-lg bg-white shadow-xl">
         <div className="flex items-center justify-between border-b border-slate-200 bg-brand-navy px-5 py-3">
-          <h2 className="text-lg font-semibold text-white">New Call for Return Period</h2>
+          <h2 className="text-lg font-semibold text-white">
+            {isEdit ? 'Edit Call for Return Period' : 'New Call for Return Period'}
+          </h2>
           <button onClick={onClose} className="text-white/70 hover:text-white">
             ✕
           </button>
@@ -40,17 +52,19 @@ export function CallForReturnFormModal({ onClose }: CallForReturnFormModalProps)
               Name (e.g. Submission Year-Month)
             </label>
             <input
-              autoFocus
+              autoFocus={!isEdit}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. 2026-01"
-              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+              disabled={isEdit}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
             />
           </div>
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-500">Start Date</label>
             <input
+              autoFocus={isEdit}
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}

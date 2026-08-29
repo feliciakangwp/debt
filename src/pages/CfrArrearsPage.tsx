@@ -3,7 +3,12 @@ import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
 import { CfrStatusBadge } from '../components/CfrStatusBadge';
-import { CfrActionButtons, CfrRejectBox, CfrSuperAdminPanel } from '../components/CfrSubmissionPanel';
+import {
+  CfrActionButtons,
+  CfrRejectBox,
+  CfrRejectionNotice,
+  CfrSuperAdminPanel,
+} from '../components/CfrSubmissionPanel';
 import { useCfrSubmissionWorkflow } from '../hooks/useCfrSubmissionWorkflow';
 import { formatCurrency } from '../utils/format';
 import { resolveDebtorBuckets } from '../utils/aging';
@@ -170,6 +175,7 @@ export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
               : 'No branch is assigned to this persona, so no lines are shown here.'}
       </p>
 
+      {!consolidated && <CfrRejectionNotice workflow={workflow} />}
       {!consolidated && <CfrRejectBox workflow={workflow} />}
 
       {!activePeriod ? (

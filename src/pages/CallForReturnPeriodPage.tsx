@@ -14,6 +14,7 @@ interface Row extends CallForReturnPeriod {
 export function CallForReturnPeriodPage() {
   const { callForReturnPeriods, simulatedToday } = useApp();
   const [showNew, setShowNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const rows: Row[] = useMemo(
     () =>
@@ -23,8 +24,23 @@ export function CallForReturnPeriodPage() {
     [callForReturnPeriods, simulatedToday],
   );
 
+  const editingPeriod = editingId ? callForReturnPeriods.find((p) => p.id === editingId) : undefined;
+
   const columns: ColumnDef<Row>[] = [
-    { key: 'name', header: 'Submission Year-Month', accessor: (r) => r.name, sortType: 'alpha' },
+    {
+      key: 'name',
+      header: 'Submission Year-Month',
+      accessor: (r) => r.name,
+      render: (r) => (
+        <button
+          onClick={() => setEditingId(r.id)}
+          className="font-medium text-brand-navy underline decoration-dotted hover:text-brand-gold"
+        >
+          {r.name}
+        </button>
+      ),
+      sortType: 'alpha',
+    },
     {
       key: 'status',
       header: 'Status',
@@ -55,6 +71,9 @@ export function CallForReturnPeriodPage() {
       <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} />
 
       {showNew && <CallForReturnFormModal onClose={() => setShowNew(false)} />}
+      {editingPeriod && (
+        <CallForReturnFormModal period={editingPeriod} onClose={() => setEditingId(null)} />
+      )}
     </div>
   );
 }

@@ -43,6 +43,21 @@ export function CfrActionButtons({ workflow }: { workflow: CfrSubmissionWorkflow
   );
 }
 
+/** Shows the reviewer's rejection reason to the Branch Rep once the
+ * submission is back in Draft, so they know what to fix before resubmitting. */
+export function CfrRejectionNotice({ workflow }: { workflow: CfrSubmissionWorkflow }) {
+  const { rejectionNotice } = workflow;
+  if (!rejectionNotice) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+      <span className="font-semibold">
+        Rejected by {rejectionNotice.actor} on {rejectionNotice.date}:{' '}
+      </span>
+      {rejectionNotice.comment}
+    </div>
+  );
+}
+
 export function CfrRejectBox({ workflow }: { workflow: CfrSubmissionWorkflow }) {
   const { rejectingId, rejectComment, setRejectingId, setRejectComment, handleConfirmReject } = workflow;
   if (!rejectingId) return null;

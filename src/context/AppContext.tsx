@@ -134,6 +134,7 @@ interface AppContextValue {
   rejectEdit: (id: string, actorLabel: string, comment: string) => void;
   callForReturnPeriods: CallForReturnPeriod[];
   addCallForReturnPeriod: (period: Omit<CallForReturnPeriod, 'id'>) => void;
+  updateCallForReturnPeriod: (id: string, patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>) => void;
   cfrArrearsSubmissions: CfrArrearsSubmission[];
   ensureCfrSubmissionsForPeriod: (periodId: string, actorLabel: string) => void;
   submitCfrArrears: (id: string, actorLabel: string) => void;
@@ -326,6 +327,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCallForReturnPeriods((prev) => [...prev, { ...period, id }]);
   };
 
+  const updateCallForReturnPeriod = (
+    id: string,
+    patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>,
+  ) => {
+    setCallForReturnPeriods((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  };
+
   // Idempotently makes sure every branch has a Draft submission for the
   // given period, so the finance-wide views show a complete picture as soon
   // as a Call for Return period opens, rather than only once each Branch Rep
@@ -404,6 +412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rejectEdit,
     callForReturnPeriods,
     addCallForReturnPeriod,
+    updateCallForReturnPeriod,
     cfrArrearsSubmissions,
     ensureCfrSubmissionsForPeriod,
     submitCfrArrears,

@@ -179,6 +179,40 @@ test('Call for Return period status computes live from the simulated date', asyn
   await expect(openRow.locator('span', { hasText: 'Open' })).toBeVisible();
 });
 
+test('clicking a Call for Return Period row opens an editable popup and status updates live', async ({ page }) => {
+  await page.goto('/');
+  await setPersona(page, 'Reviewer 1 FIN');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+
+  await page.click('button:has-text("+ New")');
+  const newModal = page.locator('div.fixed.inset-0.z-50');
+  await newModal.locator('input').first().fill('SMOKE-EDIT-PERIOD');
+  const newDateInputs = newModal.locator('input[type=date]');
+  await newDateInputs.nth(0).fill('2000-01-01');
+  await newDateInputs.nth(1).fill('2000-06-01');
+  await newModal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  const row = page.locator('tr', { hasText: 'SMOKE-EDIT-PERIOD' }).first();
+  await expect(row.locator('span', { hasText: 'Closed' })).toBeVisible();
+
+  await row.locator('button', { hasText: 'SMOKE-EDIT-PERIOD' }).click();
+  const editModal = page.locator('div.fixed.inset-0.z-50');
+  await expect(editModal.locator('h2')).toHaveText('Edit Call for Return Period');
+  await expect(editModal.locator('input').first()).toBeDisabled();
+
+  const editDateInputs = editModal.locator('input[type=date]');
+  await editDateInputs.nth(0).fill('2026-01-01');
+  await editDateInputs.nth(1).fill('2026-12-31');
+  await expect(editModal.locator('span', { hasText: 'Open' })).toBeVisible();
+  await editModal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  await expect(row.locator('span', { hasText: 'Open' })).toBeVisible();
+  await expect(row).toContainText('2026-01-01');
+  await expect(row).toContainText('2026-12-31');
+});
+
 test('CFR arrears submission goes Draft -> Pending Review -> Supported -> Approved', async ({ page }) => {
   await page.goto('/');
 
@@ -303,4 +337,11 @@ test('Reviewer reject on CFR arrears sends it back to Draft', async ({ page }) =
   await setPersona(page, 'Branch Rep SIB');
   await gotoTabExact(page, 'Arrears');
   await expect(page.locator('main').getByText('Draft', { exact: true }).first()).toBeVisible();
+  await expect(page.locator('main')).toContainText('Rejected by Reviewer 1 SIB');
+  await expect(page.locator('main')).toContainText('Please recheck the figures');
+
+  // The same rejection notice shows on Top 10 Debtors too, since it's the
+  // same underlying submission record.
+  await gotoTabExact(page, 'Top 10 Debtors');
+  await expect(page.locator('main')).toContainText('Please recheck the figures');
 });
