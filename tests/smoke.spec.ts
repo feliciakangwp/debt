@@ -33,7 +33,7 @@ function expectedTabsFor(persona: string): string[] {
     ];
   }
   if (isFinanceOfficer) {
-    return ['Debtors Report', ...ORIGINAL_FINANCE_ONLY_TABS, ...CFR_FIN_TABS, ...CFR_TABS];
+    return ['Debtors Report', ...ORIGINAL_FINANCE_ONLY_TABS, ...CFR_FIN_TABS];
   }
   if (isFinBranchReviewerOrCpm) {
     return [
@@ -260,14 +260,16 @@ test('sidebar sections can be collapsed and re-expanded by clicking their header
   await expect(periodTab).toBeVisible();
 });
 
-test('Call For Return Arrears is branch-scoped only — Finance Officer and FIN reviewers do not get a cross-branch view', async ({ page }) => {
+test('Call For Return Arrears is branch-scoped only — Finance Officer has no access to the section, FIN reviewers do not get a cross-branch view', async ({ page }) => {
   await page.goto('/');
 
+  // Finance Officer no longer sees the "Call For Return" section at all —
+  // only the single, consolidated "(Fin) Call For Return" copy of Arrears.
   await setPersona(page, 'Finance Officer');
-  await gotoTabExact(page, 'Arrears', 1);
-  await expect(page.locator('main')).toContainText('No branch is assigned to this persona');
-
-  // The consolidated (Fin) copy is unaffected — still cross-branch.
+  const arrearsMatches = (await page.locator('nav ul li button').allTextContents()).filter(
+    (l) => l.trim() === 'Arrears',
+  );
+  expect(arrearsMatches).toHaveLength(1);
   await gotoTabExact(page, 'Arrears', 0);
   await expect(page.locator('main')).toContainText('Consolidated across all branches');
 

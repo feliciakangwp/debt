@@ -65,14 +65,14 @@ export function isFinanceTeamPersona(persona: Persona): boolean {
   );
 }
 
-/** Branch Rep, Reviewer 1, CPM, Finance Officer, and Super Admin — everyone
- * except (today, none) — the Debt Management (CFR) section. */
+/** Branch Rep, Reviewer 1, CPM (any branch, including FIN), and Super Admin —
+ * the "Call For Return" section. Finance Officer does not get this section;
+ * they have their own "(Fin) Call For Return" section instead. */
 export function hasCfrAccess(persona: Persona): boolean {
   return (
     isSuperAdmin(persona) ||
     persona.role === 'BRANCH_REP' ||
     persona.role === 'REVIEWER_1' ||
-    persona.role === 'CPM' ||
-    persona.role === 'FINANCE'
+    persona.role === 'CPM'
   );
 }
