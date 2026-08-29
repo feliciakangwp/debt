@@ -158,6 +158,40 @@ export function debtorAmountRows(d: Debtor): { amount: number; requiredPaidDate:
   return [{ amount: totalAR(d), requiredPaidDate: '' }];
 }
 
+/**
+ * Same rows as debtorAmountRows, but with a Supported write-off's amount
+ * knocked off — for the List of Debtors' Amount column, which otherwise
+ * kept showing the pre-write-off figure even though every aggregate report
+ * already reflects the reduction via resolveDebtorBuckets. Reduces the rows
+ * actually in arrears (due on or before `today`) first, earliest due date
+ * first, mirroring resolveDebtorBuckets' oldest-bucket-first order since
+ * each row falls into exactly one bucket. Rows not yet due are never
+ * touched, same as resolveDebtorBuckets leaves notInArrears alone.
+ */
+export function debtorAmountRowsNetOfWriteOff(
+  d: Debtor,
+  today: string,
+): { amount: number; requiredPaidDate: string }[] {
+  const rows = debtorAmountRows(d);
+  if (!d.writeOff || d.writeOff.status !== 'SUPPORTED') return rows;
+
+  const overdueOldestFirst = rows
+    .map((r, index) => ({ ...r, index }))
+    .filter((r) => r.requiredPaidDate && r.requiredPaidDate <= today)
+    .sort((a, b) => a.requiredPaidDate.localeCompare(b.requiredPaidDate));
+
+  const netAmountByIndex = new Map<number, number>();
+  let remaining = d.writeOff.writeOffAmount;
+  for (const r of overdueOldestFirst) {
+    if (remaining <= 0) break;
+    const take = Math.min(r.amount, remaining);
+    netAmountByIndex.set(r.index, r.amount - take);
+    remaining -= take;
+  }
+
+  return rows.map((r, index) => (netAmountByIndex.has(index) ? { ...r, amount: netAmountByIndex.get(index)! } : r));
+}
+
 const BUCKET_LABELS: Record<keyof AgingBuckets, string> = {
   notInArrears: 'AR Not in Arrears',
   arrears6m: 'AR in Arrears ≤ 6 months',

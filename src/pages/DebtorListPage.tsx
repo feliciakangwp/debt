@@ -6,7 +6,7 @@ import { DebtorFormModal } from '../components/DebtorFormModal';
 import { DebtorDetailsModal } from '../components/DebtorDetailsModal';
 import { StatusBadge } from '../components/StatusBadge';
 import { formatCurrency } from '../utils/format';
-import { debtorAmountRows } from '../utils/aging';
+import { debtorAmountRowsNetOfWriteOff } from '../utils/aging';
 import { isSuperAdmin, visibleDebtors } from '../utils/visibility';
 import type { Debtor, DebtorStatus } from '../types';
 
@@ -26,7 +26,7 @@ interface DebtorEntryRow {
 }
 
 export function DebtorListPage() {
-  const { persona, debtors, natureList, descriptionList, updateDebtorsStatus, deleteDebtors } =
+  const { persona, debtors, natureList, descriptionList, simulatedToday, updateDebtorsStatus, deleteDebtors } =
     useApp();
   const [showNew, setShowNew] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
@@ -42,7 +42,7 @@ export function DebtorListPage() {
   const rows: DebtorEntryRow[] = useMemo(() => {
     const out: DebtorEntryRow[] = [];
     for (const d of scopedDebtors) {
-      debtorAmountRows(d).forEach((entry, idx) => {
+      debtorAmountRowsNetOfWriteOff(d, simulatedToday).forEach((entry, idx) => {
         out.push({
           key: `${d.id}-${idx}`,
           debtor: d,
@@ -60,7 +60,7 @@ export function DebtorListPage() {
       });
     }
     return out;
-  }, [scopedDebtors]);
+  }, [scopedDebtors, simulatedToday]);
 
   const canActAsBranchRep = persona.role === 'BRANCH_REP' || isSuperAdmin(persona);
   const canActAsReviewer = persona.role === 'REVIEWER_1' || isSuperAdmin(persona);

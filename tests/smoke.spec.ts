@@ -718,6 +718,19 @@ test('a Supported write-off knocks the amount off Total in Arrears and appears o
   expect(ledgerText).toContain('Write Off');
   await reviewerModal.locator('button:has-text("✕")').click();
 
+  // List of Debtors' Amount column reflects the knock-off too: this
+  // debtor's only overdue entry (12,000, <=6 months) drops to 10,500 once
+  // 1,500 is written off, while its not-yet-due entry (4,000) is untouched.
+  const headers = (await page.locator('table thead th').allTextContents()).map((h) => h.replace('⇅', '').trim());
+  const amountColIdx = headers.indexOf('Amount');
+  const debtorRows = page.locator('table tbody tr', { hasText: debtorName });
+  const rowCount = await debtorRows.count();
+  const amountsAfter: string[] = [];
+  for (let i = 0; i < rowCount; i++) {
+    amountsAfter.push((await debtorRows.nth(i).locator('td').nth(amountColIdx).innerText()).trim());
+  }
+  expect(amountsAfter.sort()).toEqual(['$10,500', '$4,000'].sort());
+
   // Shows up on the "Write Off" tab now that it's Supported.
   await page.getByRole('button', { name: 'Write Off', exact: true }).click();
   await expect(
