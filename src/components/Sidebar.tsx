@@ -161,7 +161,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
             <div key={group.header} className="mb-4 last:mb-0">
               <button
                 onClick={() => toggleGroup(group.header)}
-                className="mb-2 flex w-full items-center justify-between px-3 text-sm font-bold text-white"
+                className="mb-2 flex w-full items-center justify-between px-3 text-sm font-bold text-brand-gold"
                 aria-expanded={!isCollapsed}
               >
                 <span>{group.header}</span>
