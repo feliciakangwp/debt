@@ -8,15 +8,16 @@ const PERSONAS = [
   'Finance Officer',
 ];
 
-const OPERATIONAL_TABS = ['List of Debtors', 'Debtors Report', 'Arrears Report'];
-const FINANCE_TABS = ['(Fin) Debtors Report', '(Fin) Arrears Report', 'Nature of Arrears', 'Description'];
-
+// Nav order is fixed in Sidebar.tsx; each persona sees a subset of it.
+// "Debtors Report" is reachable by both audiences: operational roles see
+// their own branch, the finance team sees every branch on the same tab.
 function expectedTabsFor(persona: string): string[] {
   const isFinanceOfficer = persona === 'Finance Officer';
   const isFinBranch = persona.endsWith('FIN') && persona !== 'Branch Rep FIN';
-  if (isFinanceOfficer) return FINANCE_TABS;
-  if (isFinBranch) return [...OPERATIONAL_TABS, ...FINANCE_TABS];
-  return OPERATIONAL_TABS;
+  const financeTabs = ['(Fin) Arrears Report', 'Nature of Arrears', 'Description'];
+  if (isFinanceOfficer) return ['Debtors Report', ...financeTabs];
+  if (isFinBranch) return ['List of Debtors', 'Debtors Report', 'Arrears Report', ...financeTabs];
+  return ['List of Debtors', 'Debtors Report', 'Arrears Report'];
 }
 
 async function setPersona(page: Page, label: string) {
@@ -59,12 +60,28 @@ test('Case Reference is the first data column on the three report-style pages', 
   await page.goto('/');
   await setPersona(page, 'Finance Officer');
 
-  for (const tab of ['(Fin) Debtors Report', '(Fin) Arrears Report']) {
+  for (const tab of ['Debtors Report', '(Fin) Arrears Report']) {
     await page.locator('nav ul li button', { hasText: tab }).click();
     await page.waitForTimeout(150);
     const firstHeader = (await page.locator('table thead th').first().textContent())?.trim();
     expect(firstHeader?.startsWith('Case Reference'), `${tab} first column`).toBe(true);
   }
+});
+
+test('Finance team sees every branch on Debtors Report, branch roles see only their own', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Finance Officer');
+  await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
+  await page.waitForTimeout(150);
+  const financeBranches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
+  expect(financeBranches.size, 'Finance Officer should see multiple branches').toBeGreaterThan(1);
+
+  await setPersona(page, 'Branch Rep PSB');
+  await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
+  await page.waitForTimeout(150);
+  const branchRepBranches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
+  expect([...branchRepBranches]).toEqual(['PSB']);
 });
 
 test('Branch Rep can create and submit a debtor end to end', async ({ page }) => {

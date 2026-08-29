@@ -8,21 +8,28 @@ import { DebtorsPage } from './pages/DebtorsPage';
 import { ArrearsSummaryPage } from './pages/ArrearsSummaryPage';
 import { hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
-const OPERATIONAL_PAGES: PageKey[] = ['debtor-list', 'debtors', 'arrears'];
-const FINANCE_TEAM_PAGES: PageKey[] = ['debtors-fin', 'arrears-fin', 'nature', 'description'];
+// 'debtors' is reachable by both audiences: operational roles see their own
+// branch, the finance team sees every branch (handled inside DebtorsPage).
+const OPERATIONAL_ONLY_PAGES: PageKey[] = ['debtor-list', 'arrears'];
+const FINANCE_TEAM_ONLY_PAGES: PageKey[] = ['arrears-fin', 'nature', 'description'];
 
 function Shell() {
   const { persona } = useApp();
   const [page, setPage] = useState<PageKey>('debtor-list');
 
   useEffect(() => {
-    const allowed = OPERATIONAL_PAGES.includes(page)
-      ? hasOperationalAccess(persona)
-      : FINANCE_TEAM_PAGES.includes(page)
-        ? isFinanceTeamPersona(persona)
-        : true;
+    const operational = hasOperationalAccess(persona);
+    const financeTeam = isFinanceTeamPersona(persona);
+    const allowed =
+      page === 'debtors'
+        ? operational || financeTeam
+        : OPERATIONAL_ONLY_PAGES.includes(page)
+          ? operational
+          : FINANCE_TEAM_ONLY_PAGES.includes(page)
+            ? financeTeam
+            : true;
     if (!allowed) {
-      setPage(hasOperationalAccess(persona) ? 'debtor-list' : 'debtors-fin');
+      setPage(operational ? 'debtor-list' : 'debtors');
     }
   }, [persona, page]);
 
@@ -47,7 +54,6 @@ function Shell() {
         {page === 'debtor-list' && <DebtorListPage />}
         {page === 'debtors' && <DebtorsPage />}
         {page === 'arrears' && <ArrearsSummaryPage />}
-        {page === 'debtors-fin' && <DebtorsPage financeView />}
         {page === 'arrears-fin' && <ArrearsSummaryPage financeView />}
       </main>
     </div>

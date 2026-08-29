@@ -6,25 +6,25 @@ import { formatCurrency } from '../utils/format';
 import { totalAR, totalInArrears } from '../types';
 import type { Debtor } from '../types';
 import { resolveDebtorBuckets } from '../utils/aging';
-import { financeReportVisibleDebtors, visibleDebtors } from '../utils/visibility';
+import { financeReportVisibleDebtors, isFinanceTeamPersona, visibleDebtors } from '../utils/visibility';
 import { StatusBadge } from '../components/StatusBadge';
 
-interface DebtorsPageProps {
-  financeView?: boolean;
-}
-
-export function DebtorsPage({ financeView = false }: DebtorsPageProps) {
+export function DebtorsPage() {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
+  const financeTeam = isFinanceTeamPersona(persona);
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const visibleRows = useMemo(() => {
-    const scoped = financeView
+    // Rows are already unique per debtor (not consolidated across branches),
+    // so the finance team simply sees every branch's rows here instead of
+    // needing a separate aggregated "(Fin)" copy of this report.
+    const scoped = financeTeam
       ? financeReportVisibleDebtors(persona, debtors)
       : visibleDebtors(persona, debtors);
     return scoped.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
-  }, [debtors, persona, simulatedToday, financeView]);
+  }, [debtors, persona, simulatedToday, financeTeam]);
 
   const columns: ColumnDef<Debtor>[] = [
     {
@@ -150,11 +150,9 @@ export function DebtorsPage({ financeView = false }: DebtorsPageProps) {
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold text-brand-navy">
-        {financeView ? '(Fin) Debtors Report' : 'Debtors Report'}
-      </h1>
+      <h1 className="mb-1 text-2xl font-bold text-brand-navy">Debtors Report</h1>
       <p className="mb-5 text-sm text-slate-500">
-        {financeView
+        {financeTeam
           ? 'Showing all branches.'
           : `Showing records for ${persona.branch} only.`}{' '}
         Click a column header to sort.

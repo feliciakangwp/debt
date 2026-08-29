@@ -9,7 +9,6 @@ export type PageKey =
   | 'debtor-list'
   | 'debtors'
   | 'arrears'
-  | 'debtors-fin'
   | 'arrears-fin';
 
 interface NavItem {
@@ -30,9 +29,8 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
 
   const items: NavItem[] = [
     { key: 'debtor-list', label: 'List of Debtors', visible: operational },
-    { key: 'debtors', label: 'Debtors Report', visible: operational },
+    { key: 'debtors', label: 'Debtors Report', visible: operational || financeTeam },
     { key: 'arrears', label: 'Arrears Report', visible: operational },
-    { key: 'debtors-fin', label: '(Fin) Debtors Report', visible: financeTeam },
     { key: 'arrears-fin', label: '(Fin) Arrears Report', visible: financeTeam },
     { key: 'nature', label: 'Nature of Arrears', visible: financeTeam },
     { key: 'description', label: 'Description', visible: financeTeam },
