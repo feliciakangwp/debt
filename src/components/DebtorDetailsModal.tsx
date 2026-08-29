@@ -3,9 +3,21 @@ import { useApp } from '../context/AppContext';
 import { AREntriesEditor } from './AREntriesEditor';
 import { StatusBadge, WriteOffStatusBadge } from './StatusBadge';
 import { formatCurrency } from '../utils/format';
-import { daysBetween, debtorAmountRows, firstArrearDate, summarizeBuckets } from '../utils/aging';
+import {
+  buildTransactionLedger,
+  daysBetween,
+  debtorAmountRows,
+  firstArrearDate,
+  summarizeBuckets,
+} from '../utils/aging';
 import { isSuperAdmin } from '../utils/visibility';
-import type { AREntry, Debtor } from '../types';
+import type { AREntry, Debtor, TransactionType } from '../types';
+
+const TRANSACTION_LABELS: Record<TransactionType, string> = {
+  ARREARS: 'Arrears',
+  WRITE_OFF: 'Write Off',
+  PAID: 'Paid',
+};
 
 interface DebtorDetailsModalProps {
   debtor: Debtor;
@@ -56,7 +68,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
     requestEdit,
     approveEdit,
     rejectEdit,
-    createWriteOff,
+    saveWriteOff,
     supportWriteOff,
   } = useApp();
 
@@ -174,7 +186,10 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
     ? entriesSignature(proposal.arEntries) !== entriesSignature(currentEntries)
     : false;
 
-  // --- Write Off: Branch Rep submits, Reviewer 1 supports, one-shot ---
+  // --- Write Off: Branch Rep saves (To be Written Off, still editable) or
+  // submits (Pending, locked, routed to Reviewer 1). Reviewer 1 then
+  // supports it (Supported), which knocks the amount off the debtor's
+  // arrears via resolveDebtorBuckets. ---
   const [writingOff, setWritingOff] = useState(false);
   const [writeOffDate, setWriteOffDate] = useState(simulatedToday);
   const [writeOffAmount, setWriteOffAmount] = useState('');
@@ -182,7 +197,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
 
   const arrearStart = firstArrearDate(debtor, simulatedToday);
   const daysInArrears = arrearStart ? daysBetween(arrearStart, writeOffDate) : null;
-  const canSubmitWriteOff =
+  const canSaveWriteOff =
     writeOffDate !== '' &&
     writeOffAmount.trim() !== '' &&
     Number(writeOffAmount) > 0 &&
@@ -191,15 +206,15 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
     daysInArrears >= 0;
 
   const handleStartWriteOff = () => {
-    setWriteOffDate(simulatedToday);
-    setWriteOffAmount('');
-    setWriteOffReason('');
+    setWriteOffDate(debtor.writeOff?.dateOfWriteOff ?? simulatedToday);
+    setWriteOffAmount(debtor.writeOff ? String(debtor.writeOff.writeOffAmount) : '');
+    setWriteOffReason(debtor.writeOff?.reasonForWriteOff ?? '');
     setWritingOff(true);
   };
 
-  const handleSubmitWriteOff = () => {
-    if (!canSubmitWriteOff || daysInArrears === null) return;
-    createWriteOff(
+  const handleSaveOrSubmitWriteOff = (submit: boolean) => {
+    if (!canSaveWriteOff || daysInArrears === null) return;
+    saveWriteOff(
       debtor.id,
       {
         dateOfWriteOff: writeOffDate,
@@ -208,13 +223,34 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
         reasonForWriteOff: writeOffReason.trim(),
       },
       persona.label,
+      submit,
     );
     setWritingOff(false);
+  };
+
+  // Submits an already-saved (To be Written Off) record as-is, from the
+  // read-only summary view — doesn't depend on the form's local state,
+  // which is only populated while the form is actually open.
+  const handleSubmitExistingWriteOff = () => {
+    if (!debtor.writeOff) return;
+    saveWriteOff(
+      debtor.id,
+      {
+        dateOfWriteOff: debtor.writeOff.dateOfWriteOff,
+        writeOffAmount: debtor.writeOff.writeOffAmount,
+        daysInArrears: debtor.writeOff.daysInArrears,
+        reasonForWriteOff: debtor.writeOff.reasonForWriteOff,
+      },
+      persona.label,
+      true,
+    );
   };
 
   const handleSupportWriteOff = () => {
     supportWriteOff(debtor.id, persona.label);
   };
+
+  const ledger = buildTransactionLedger(debtor);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -436,38 +472,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
               {debtor.writeOff && <WriteOffStatusBadge status={debtor.writeOff.status} />}
             </div>
 
-            {debtor.writeOff ? (
-              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <div className="text-xs font-semibold text-slate-400">Date of Write Off</div>
-                    <div className="text-slate-700">{debtor.writeOff.dateOfWriteOff}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-400">Write Off Amount</div>
-                    <div className="text-slate-700">{formatCurrency(debtor.writeOff.writeOffAmount)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-400">Days in Arrears</div>
-                    <div className="text-slate-700">{debtor.writeOff.daysInArrears}</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-xs font-semibold text-slate-400">Reasons for Write-Offs</div>
-                    <div className="text-slate-700">{debtor.writeOff.reasonForWriteOff}</div>
-                  </div>
-                </div>
-                {isReviewer && debtor.writeOff.status === 'PENDING' && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleSupportWriteOff}
-                      className="rounded-md border border-emerald-300 px-4 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-                    >
-                      Support
-                    </button>
-                  </div>
-                )}
-              </div>
-            ) : writingOff ? (
+            {writingOff ? (
               <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -514,13 +519,67 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
                     Cancel
                   </button>
                   <button
-                    onClick={handleSubmitWriteOff}
-                    disabled={!canSubmitWriteOff}
+                    onClick={() => handleSaveOrSubmitWriteOff(false)}
+                    disabled={!canSaveWriteOff}
+                    className="rounded-md border border-brand-navy/30 px-4 py-1.5 text-sm font-semibold text-brand-navy hover:bg-brand-navy hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => handleSaveOrSubmitWriteOff(true)}
+                    disabled={!canSaveWriteOff}
                     className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Submit
                   </button>
                 </div>
+              </div>
+            ) : debtor.writeOff ? (
+              <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-400">Date of Write Off</div>
+                    <div className="text-slate-700">{debtor.writeOff.dateOfWriteOff}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-400">Write Off Amount</div>
+                    <div className="text-slate-700">{formatCurrency(debtor.writeOff.writeOffAmount)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-slate-400">Days in Arrears</div>
+                    <div className="text-slate-700">{debtor.writeOff.daysInArrears}</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-xs font-semibold text-slate-400">Reasons for Write-Offs</div>
+                    <div className="text-slate-700">{debtor.writeOff.reasonForWriteOff}</div>
+                  </div>
+                </div>
+                {isBranchRep && debtor.writeOff.status === 'TO_BE_WRITTEN_OFF' && (
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={handleStartWriteOff}
+                      className="rounded-md border border-brand-navy/30 px-4 py-1.5 text-sm font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={handleSubmitExistingWriteOff}
+                      className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                )}
+                {isReviewer && debtor.writeOff.status === 'PENDING' && (
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleSupportWriteOff}
+                      className="rounded-md border border-emerald-300 px-4 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
+                    >
+                      Support
+                    </button>
+                  </div>
+                )}
               </div>
             ) : isBranchRep ? (
               arrearStart ? (
@@ -536,6 +595,40 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
             ) : (
               <p className="text-xs text-slate-400">No write-off has been submitted for this debtor.</p>
             )}
+          </div>
+
+          <div className="col-span-2 border-t border-slate-200 pt-3">
+            <label className="mb-2 block text-xs font-semibold text-slate-500">Transaction Listing</label>
+            <div className="overflow-hidden rounded-md border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-1.5 text-left font-semibold">Transaction Date</th>
+                    <th className="px-3 py-1.5 text-left font-semibold">Transaction</th>
+                    <th className="px-3 py-1.5 text-right font-semibold">Amount</th>
+                    <th className="px-3 py-1.5 text-right font-semibold">Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledger.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-3 text-center text-slate-400">
+                        No transactions on record.
+                      </td>
+                    </tr>
+                  ) : (
+                    ledger.map((row, idx) => (
+                      <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                        <td className="px-3 py-1.5">{row.date}</td>
+                        <td className="px-3 py-1.5">{TRANSACTION_LABELS[row.type]}</td>
+                        <td className="px-3 py-1.5 text-right">{formatCurrency(row.amount)}</td>
+                        <td className="px-3 py-1.5 text-right font-semibold">{formatCurrency(row.balance)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 

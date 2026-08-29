@@ -76,3 +76,15 @@ export function hasCfrAccess(persona: Persona): boolean {
     persona.role === 'CPM'
   );
 }
+
+/**
+ * Scoping for the Write Off / To Be Written Off report tabs: independent of
+ * the Debtor List's own status (a write-off can exist on a debtor at any
+ * status), scoped purely by branch — Branch Rep/Reviewer 1/CPM see only
+ * their own branch, Finance Officer/Reviewer 1 FIN/CPM FIN and Super Admin
+ * see every branch, same as Debtors Report.
+ */
+export function writeOffVisibleDebtors(persona: Persona, debtors: Debtor[]): Debtor[] {
+  if (isSuperAdmin(persona) || isFinanceTeamPersona(persona)) return debtors;
+  return debtors.filter((d) => d.branch === persona.branch);
+}

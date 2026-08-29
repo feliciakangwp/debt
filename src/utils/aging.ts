@@ -1,5 +1,5 @@
 import { ARREARS_BUCKET_KEYS, totalAR } from '../types';
-import type { AREntry, Debtor } from '../types';
+import type { AREntry, Debtor, TransactionType } from '../types';
 import { formatCurrency } from './format';
 
 export type AgingBuckets = Pick<
@@ -81,30 +81,64 @@ export function computeAgingBucketsForEntries(entries: AREntry[], today: string)
 }
 
 /**
+ * Reduces the oldest (most overdue) non-zero buckets first by `amount`,
+ * clamping each at zero — how a Supported write-off knocks the amount off
+ * the debtor's arrears: the longest-outstanding debt is cleared first.
+ */
+function knockOffOldestFirst(buckets: AgingBuckets, amount: number): AgingBuckets {
+  const result = { ...buckets };
+  let remaining = amount;
+  const oldestFirst: (keyof AgingBuckets)[] = [
+    'arrears5yPlus',
+    'arrears4to5y',
+    'arrears3to4y',
+    'arrears2to3y',
+    'arrears1to2y',
+    'arrears6to12m',
+    'arrears6m',
+  ];
+  for (const key of oldestFirst) {
+    if (remaining <= 0) break;
+    const take = Math.min(result[key], remaining);
+    result[key] -= take;
+    remaining -= take;
+  }
+  return result;
+}
+
+/**
  * Returns the aging buckets that should actually be displayed/summed for a
  * debtor, resolved live against `today` so records shift columns as the
  * simulated date changes:
  *  - arEntries (multiple amount + due date pairs) take priority when present.
  *  - a single legacy requiredPaidDate/totalARAmount pair is used next.
  *  - otherwise the directly-entered legacy bucket fields are returned as-is.
+ * Once the debtor's Write Off is Supported, its amount is then knocked off
+ * the result (oldest arrears first) — every report/total that goes through
+ * this function reflects the write-off automatically.
  */
 export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
+  let buckets: AgingBuckets;
   if (d.arEntries && d.arEntries.length > 0) {
-    return computeAgingBucketsForEntries(d.arEntries, today);
+    buckets = computeAgingBucketsForEntries(d.arEntries, today);
+  } else if (d.requiredPaidDate) {
+    buckets = computeAgingBuckets(d.totalARAmount ?? 0, d.requiredPaidDate, today);
+  } else {
+    buckets = {
+      notInArrears: d.notInArrears,
+      arrears6m: d.arrears6m,
+      arrears6to12m: d.arrears6to12m,
+      arrears1to2y: d.arrears1to2y,
+      arrears2to3y: d.arrears2to3y,
+      arrears3to4y: d.arrears3to4y,
+      arrears4to5y: d.arrears4to5y,
+      arrears5yPlus: d.arrears5yPlus,
+    };
   }
-  if (d.requiredPaidDate) {
-    return computeAgingBuckets(d.totalARAmount ?? 0, d.requiredPaidDate, today);
+  if (d.writeOff?.status === 'SUPPORTED') {
+    buckets = knockOffOldestFirst(buckets, d.writeOff.writeOffAmount);
   }
-  return {
-    notInArrears: d.notInArrears,
-    arrears6m: d.arrears6m,
-    arrears6to12m: d.arrears6to12m,
-    arrears1to2y: d.arrears1to2y,
-    arrears2to3y: d.arrears2to3y,
-    arrears3to4y: d.arrears3to4y,
-    arrears4to5y: d.arrears4to5y,
-    arrears5yPlus: d.arrears5yPlus,
-  };
+  return buckets;
 }
 
 /**
@@ -202,4 +236,38 @@ export function firstArrearDate(d: Debtor, today: string): string | null {
 export function daysBetween(from: string, to: string): number {
   const msPerDay = 1000 * 60 * 60 * 24;
   return Math.round((parseDate(to).getTime() - parseDate(from).getTime()) / msPerDay);
+}
+
+export interface TransactionRow {
+  date: string;
+  type: TransactionType;
+  /** Signed: positive for Arrears, negative for Write Off/Paid. */
+  amount: number;
+  /** Running cumulative total up to and including this row, in date order. */
+  balance: number;
+}
+
+/**
+ * The debtor's transaction history: one "Arrears" row per AR entry, dated
+ * by its payment due date (the gross original amount — unaffected by any
+ * write-off), plus a "Write Off" row once the write-off is Supported.
+ * "Paid" is included in TransactionType for when a payments feature exists,
+ * but nothing produces one yet. Sorted oldest first with a running balance.
+ */
+export function buildTransactionLedger(d: Debtor): TransactionRow[] {
+  const rows: { date: string; type: TransactionType; amount: number }[] = debtorAmountRows(d)
+    .filter((r) => r.requiredPaidDate)
+    .map((r) => ({ date: r.requiredPaidDate, type: 'ARREARS' as const, amount: r.amount }));
+
+  if (d.writeOff && d.writeOff.status === 'SUPPORTED') {
+    rows.push({ date: d.writeOff.dateOfWriteOff, type: 'WRITE_OFF', amount: -d.writeOff.writeOffAmount });
+  }
+
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+
+  let balance = 0;
+  return rows.map((r) => {
+    balance += r.amount;
+    return { ...r, balance };
+  });
 }

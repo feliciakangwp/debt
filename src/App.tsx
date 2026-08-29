@@ -11,11 +11,13 @@ import { CfrArrearsPage } from './pages/CfrArrearsPage';
 import { CfrTopDebtorsPage } from './pages/CfrTopDebtorsPage';
 import { CfrArrears5YearsPage } from './pages/CfrArrears5YearsPage';
 import { CfrReportsPage } from './pages/CfrReportsPage';
+import { WriteOffReportPage } from './pages/WriteOffReportPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
-// 'debtors' is reachable by both audiences: operational roles see their own
-// branch, the finance team sees every branch (handled inside DebtorsPage).
+// Reachable by both audiences: operational roles see their own branch, the
+// finance team sees every branch (handled inside each page).
+const OPERATIONAL_OR_FINANCE_PAGES: PageKey[] = ['debtors', 'write-off', 'to-be-written-off'];
 const OPERATIONAL_ONLY_PAGES: PageKey[] = ['debtor-list', 'arrears'];
 const FINANCE_TEAM_ONLY_PAGES: PageKey[] = [
   'arrears-fin',
@@ -50,7 +52,7 @@ function Shell() {
     const operational = hasOperationalAccess(persona);
     const financeTeam = isFinanceTeamPersona(persona);
     const allowed =
-      page === 'debtors'
+      OPERATIONAL_OR_FINANCE_PAGES.includes(page)
         ? operational || financeTeam
         : OPERATIONAL_ONLY_PAGES.includes(page)
           ? operational
@@ -86,6 +88,16 @@ function Shell() {
         {page === 'debtors' && <DebtorsPage />}
         {page === 'arrears' && <ArrearsSummaryPage />}
         {page === 'arrears-fin' && <ArrearsSummaryPage financeView />}
+        {page === 'write-off' && (
+          <WriteOffReportPage targetStatus="SUPPORTED" title="Write Off" amountColumnLabel="Amount of Write off" />
+        )}
+        {page === 'to-be-written-off' && (
+          <WriteOffReportPage
+            targetStatus="TO_BE_WRITTEN_OFF"
+            title="To Be Written Off"
+            amountColumnLabel="Amount to be Written off"
+          />
+        )}
 
         {page === 'cfr-fin-period' && <CallForReturnPeriodPage />}
         {page === 'cfr-fin-arrears' && <CfrArrearsPage consolidated />}

@@ -23,7 +23,7 @@ const STORAGE_KEY = 'debt-management-module-v1';
 // adding to it. A version bump replaces every browser's saved debtor list
 // with the current DEBTORS_SEED — only do this for sample/test data
 // refreshes, since it discards anything a tester added through the UI.
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 interface PersistedState {
   natureList: ReferenceItem[];
@@ -123,10 +123,11 @@ interface AppContextValue {
   requestEdit: (id: string, proposal: DebtorEditProposal, actorLabel: string) => void;
   approveEdit: (id: string, actorLabel: string) => void;
   rejectEdit: (id: string, actorLabel: string, comment: string) => void;
-  createWriteOff: (
+  saveWriteOff: (
     id: string,
     input: Pick<WriteOffRecord, 'dateOfWriteOff' | 'writeOffAmount' | 'daysInArrears' | 'reasonForWriteOff'>,
     actorLabel: string,
+    submit: boolean,
   ) => void;
   supportWriteOff: (id: string, actorLabel: string) => void;
   callForReturnPeriods: CallForReturnPeriod[];
@@ -319,20 +320,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const createWriteOff = (
+  // Covers both "Save" (status stays/becomes To be Written Off, still
+  // editable by Branch Rep) and "Submit" (status becomes Pending, routed to
+  // Reviewer 1, locked from further Branch Rep edits) — upserts the
+  // debtor's one write-off record either way, since Save can be used
+  // repeatedly before an eventual Submit.
+  const saveWriteOff = (
     id: string,
     input: Pick<WriteOffRecord, 'dateOfWriteOff' | 'writeOffAmount' | 'daysInArrears' | 'reasonForWriteOff'>,
     actorLabel: string,
+    submit: boolean,
   ) => {
     setDebtors((prev) =>
       prev.map((d) => {
         if (d.id !== id) return d;
+        const isNew = !d.writeOff;
         const writeOff: WriteOffRecord = {
-          id: `writeoff-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          status: 'PENDING',
+          id: d.writeOff?.id ?? `writeoff-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          status: submit ? 'PENDING' : 'TO_BE_WRITTEN_OFF',
           ...input,
         };
-        return appendAuditLog({ ...d, writeOff }, 'Write off submitted for review', actorLabel);
+        const action = submit
+          ? 'Write off submitted for review'
+          : isNew
+            ? 'Write off saved (to be written off)'
+            : 'Write off updated (to be written off)';
+        return appendAuditLog({ ...d, writeOff }, action, actorLabel);
       }),
     );
   };
@@ -438,7 +451,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     requestEdit,
     approveEdit,
     rejectEdit,
-    createWriteOff,
+    saveWriteOff,
     supportWriteOff,
     callForReturnPeriods,
     addCallForReturnPeriod,

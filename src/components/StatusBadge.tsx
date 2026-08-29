@@ -25,11 +25,13 @@ export function StatusBadge({ status }: { status: DebtorStatus }) {
 }
 
 const WRITE_OFF_STYLES: Record<WriteOffStatus, string> = {
+  TO_BE_WRITTEN_OFF: 'bg-slate-200 text-slate-600',
   PENDING: 'bg-amber-100 text-amber-700',
   SUPPORTED: 'bg-emerald-100 text-emerald-700',
 };
 
 const WRITE_OFF_LABELS: Record<WriteOffStatus, string> = {
+  TO_BE_WRITTEN_OFF: 'To be Written Off',
   PENDING: 'Pending',
   SUPPORTED: 'Supported',
 };

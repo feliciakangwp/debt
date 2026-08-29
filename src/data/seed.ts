@@ -1,4 +1,4 @@
-import type { Branch, Debtor, DebtorStatus, ReferenceItem } from '../types';
+import type { AREntry, Branch, Debtor, DebtorStatus, ReferenceItem } from '../types';
 import { BRANCHES } from '../types';
 
 // Alphabetically ordered
@@ -75,48 +75,80 @@ export const DESCRIPTION_ID_MIGRATION: Record<string, string> = {
   'desc-stat-fee': 'desc-other-fees',
 };
 
-const mk = (
+// Fixed reference point for every seeded due date, so the seed's bucket
+// placement (and its Days in Arrears / due-date-based ledger) is
+// reproducible rather than drifting with whatever day the app happens to
+// load on.
+const TODAY_ANCHOR = '2026-08-29';
+
+/**
+ * A due date `monthsBack` months before TODAY_ANCHOR (or after, for a
+ * negative value) — always day 15, so subtracting/adding whole months never
+ * lands on an invalid day (e.g. Feb 30). Verified to land in the intended
+ * aging bucket relative to TODAY_ANCHOR for every value used below.
+ */
+function dateForMonthsBack(monthsBack: number): string {
+  const d = new Date(`${TODAY_ANCHOR}T00:00:00`);
+  d.setDate(15);
+  d.setMonth(d.getMonth() - monthsBack);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function randomCaseReference(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+interface SeedAmountEntry {
+  /** Months before TODAY_ANCHOR this amount fell due; negative = due in the
+   * future (not yet in arrears). Picked comfortably inside the intended
+   * bucket's range, not on a boundary: -2 (not yet due), 3 (<=6 months), 9
+   * (6-12 months), 18 (1-2yrs), 30 (2-3yrs), 42 (3-4yrs), 54 (4-5yrs), 84
+   * (>=5 years). */
+  monthsBack: number;
+  amount: number;
+}
+
+const mkDebtor = (
   branch: Debtor['branch'],
   name: string,
   natureId: string,
   descriptionId: string,
-  amounts: Partial<
-    Pick<
-      Debtor,
-      | 'notInArrears'
-      | 'arrears6m'
-      | 'arrears6to12m'
-      | 'arrears1to2y'
-      | 'arrears2to3y'
-      | 'arrears3to4y'
-      | 'arrears4to5y'
-      | 'arrears5yPlus'
-    >
-  >,
+  entries: SeedAmountEntry[],
   reasonNonRecovery: string,
   recoverySteps: string,
   id: string,
   status: DebtorStatus = 'SUPPORTED',
-): Debtor => ({
-  id,
-  status,
-  branch,
-  name,
-  natureId,
-  descriptionId,
-  notInArrears: amounts.notInArrears ?? 0,
-  arrears6m: amounts.arrears6m ?? 0,
-  arrears6to12m: amounts.arrears6to12m ?? 0,
-  arrears1to2y: amounts.arrears1to2y ?? 0,
-  arrears2to3y: amounts.arrears2to3y ?? 0,
-  arrears3to4y: amounts.arrears3to4y ?? 0,
-  arrears4to5y: amounts.arrears4to5y ?? 0,
-  arrears5yPlus: amounts.arrears5yPlus ?? 0,
-  reasonNonRecovery,
-  recoverySteps,
-  caseReference: '',
-  auditLog: [{ id: `log-${id}-seed`, date: '2026-01-01', actor: 'Finance', action: 'Sample data loaded' }],
-});
+): Debtor => {
+  const arEntries: AREntry[] = entries.map((e, idx) => ({
+    id: `${id}-entry-${idx}`,
+    amount: e.amount,
+    requiredPaidDate: dateForMonthsBack(e.monthsBack),
+  }));
+  return {
+    id,
+    status,
+    branch,
+    name,
+    natureId,
+    descriptionId,
+    notInArrears: 0,
+    arrears6m: 0,
+    arrears6to12m: 0,
+    arrears1to2y: 0,
+    arrears2to3y: 0,
+    arrears3to4y: 0,
+    arrears4to5y: 0,
+    arrears5yPlus: 0,
+    reasonNonRecovery,
+    recoverySteps,
+    caseReference: randomCaseReference(),
+    arEntries,
+    auditLog: [{ id: `log-${id}-seed`, date: '2026-01-01', actor: 'Finance', action: 'Sample data loaded' }],
+  };
+};
 
 /**
  * One profile per row below is applied to every branch (with a
@@ -127,24 +159,14 @@ const mk = (
  * per branch for Top 10 Debtors / Arrears > 5 years), and a mix of Draft/
  * Pending Review/Supported statuses so the Debtor List's branch-scoped
  * visibility rules have something to show for Branch Rep, Reviewer 1, CPM
- * and Finance alike.
+ * and Finance alike. Amounts carry a real due date (via `entries`) rather
+ * than a static bucket total, so Days in Arrears, the Write Off ledger, and
+ * live aging all have something real to compute from.
  */
 interface DebtorProfile {
   natureId: string;
   descriptionId: string;
-  amounts: Partial<
-    Pick<
-      Debtor,
-      | 'notInArrears'
-      | 'arrears6m'
-      | 'arrears6to12m'
-      | 'arrears1to2y'
-      | 'arrears2to3y'
-      | 'arrears3to4y'
-      | 'arrears4to5y'
-      | 'arrears5yPlus'
-    >
-  >;
+  entries: SeedAmountEntry[];
   reasonNonRecovery: string;
   recoverySteps: string;
   status?: DebtorStatus;
@@ -159,35 +181,42 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-p-offence-motor-vehicle',
-    amounts: { notInArrears: 4000, arrears6m: 12000 },
+    entries: [
+      { monthsBack: -2, amount: 4000 },
+      { monthsBack: 3, amount: 12000 },
+    ],
     reasonNonRecovery: 'Unable to contact',
     recoverySteps: 'Engagement',
   },
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-p-offence-motor-vehicle',
-    amounts: { arrears2to3y: 45000 },
+    entries: [{ monthsBack: 30, amount: 45000 }],
     reasonNonRecovery: 'Unable to contact',
     recoverySteps: 'Engagement',
   },
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-p-offence-motor-vehicle',
-    amounts: { arrears5yPlus: 22000 },
+    entries: [{ monthsBack: 84, amount: 22000 }],
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
   },
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-p-offence-liquor-duty',
-    amounts: { arrears3to4y: 4000, arrears4to5y: 4000, arrears5yPlus: 15000 },
+    entries: [
+      { monthsBack: 42, amount: 4000 },
+      { monthsBack: 54, amount: 4000 },
+      { monthsBack: 84, amount: 15000 },
+    ],
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
   },
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-p-offence-liquor-duty',
-    amounts: { arrears6to12m: 7000 },
+    entries: [{ monthsBack: 9, amount: 7000 }],
     reasonNonRecovery: 'Payment plan ongoing',
     recoverySteps: 'Monitoring',
     status: 'PENDING_REVIEW',
@@ -195,14 +224,14 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-tobacco-cigarette-recovery',
-    amounts: { arrears6to12m: 9000 },
+    entries: [{ monthsBack: 9, amount: 9000 }],
     reasonNonRecovery: 'Payment plan ongoing',
     recoverySteps: 'Monitoring',
   },
   {
     natureId: 'nat-tax',
     descriptionId: 'desc-tobacco-cigarette-recovery',
-    amounts: { arrears1to2y: 6000 },
+    entries: [{ monthsBack: 18, amount: 6000 }],
     reasonNonRecovery: 'Awaiting response',
     recoverySteps: 'Reminder letter sent',
     status: 'DRAFT',
@@ -210,28 +239,31 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
   {
     natureId: 'nat-fees',
     descriptionId: 'desc-other-fees',
-    amounts: { arrears6m: 2500 },
+    entries: [{ monthsBack: 3, amount: 2500 }],
     reasonNonRecovery: '',
     recoverySteps: '',
   },
   {
     natureId: 'nat-fees',
     descriptionId: 'desc-other-fees',
-    amounts: { notInArrears: 1500, arrears1to2y: 3000 },
+    entries: [
+      { monthsBack: -2, amount: 1500 },
+      { monthsBack: 18, amount: 3000 },
+    ],
     reasonNonRecovery: '',
     recoverySteps: '',
   },
   {
     natureId: 'nat-fees',
     descriptionId: 'desc-cert-doc-fee',
-    amounts: { arrears6to12m: 5500 },
+    entries: [{ monthsBack: 9, amount: 5500 }],
     reasonNonRecovery: '',
     recoverySteps: '',
   },
   {
     natureId: 'nat-fees',
     descriptionId: 'desc-cert-doc-fee',
-    amounts: { arrears4to5y: 6200 },
+    entries: [{ monthsBack: 54, amount: 6200 }],
     reasonNonRecovery: 'Disputed amount',
     recoverySteps: 'Under review',
     status: 'PENDING_REVIEW',
@@ -239,7 +271,7 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
   {
     natureId: 'nat-fees',
     descriptionId: 'desc-warehouse-fee',
-    amounts: { arrears1to2y: 11000 },
+    entries: [{ monthsBack: 18, amount: 11000 }],
     reasonNonRecovery: 'Awaiting response',
     recoverySteps: 'Follow-up letter sent',
     status: 'DRAFT',
@@ -247,42 +279,45 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
   {
     natureId: 'nat-fees',
     descriptionId: 'desc-warehouse-fee',
-    amounts: { arrears5yPlus: 9000 },
+    entries: [{ monthsBack: 84, amount: 9000 }],
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
   },
   {
     natureId: 'nat-financial-penalty',
     descriptionId: 'desc-p-offence-instalment',
-    amounts: { arrears2to3y: 6500 },
+    entries: [{ monthsBack: 30, amount: 6500 }],
     reasonNonRecovery: 'Disputed amount',
     recoverySteps: 'Under review',
   },
   {
     natureId: 'nat-financial-penalty',
     descriptionId: 'desc-p-offence-instalment',
-    amounts: { arrears6m: 3200 },
+    entries: [{ monthsBack: 3, amount: 3200 }],
     reasonNonRecovery: '',
     recoverySteps: '',
   },
   {
     natureId: 'nat-financial-penalty',
     descriptionId: 'desc-motor-offence-late-instalment',
-    amounts: { arrears4to5y: 8000, arrears5yPlus: 18000 },
+    entries: [
+      { monthsBack: 54, amount: 8000 },
+      { monthsBack: 84, amount: 18000 },
+    ],
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
   },
   {
     natureId: 'nat-financial-penalty',
     descriptionId: 'desc-other-non-p-offence-instalment',
-    amounts: { arrears3to4y: 5000 },
+    entries: [{ monthsBack: 42, amount: 5000 }],
     reasonNonRecovery: 'Payment plan ongoing',
     recoverySteps: 'Monitoring',
   },
   {
     natureId: 'nat-staff-related',
     descriptionId: 'desc-staff-related-salary-medical',
-    amounts: { arrears4to5y: 9500 },
+    entries: [{ monthsBack: 54, amount: 9500 }],
     reasonNonRecovery: 'Staff resigned',
     recoverySteps: 'HR follow-up',
     status: 'PENDING_REVIEW',
@@ -290,14 +325,17 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
   {
     natureId: 'nat-staff-related',
     descriptionId: 'desc-staff-related-salary-medical',
-    amounts: { arrears6to12m: 4100 },
+    entries: [{ monthsBack: 9, amount: 4100 }],
     reasonNonRecovery: 'Staff resigned',
     recoverySteps: 'HR follow-up',
   },
   {
     natureId: 'nat-others',
     descriptionId: 'desc-miscellaneous-sales',
-    amounts: { notInArrears: 1800, arrears6m: 2200 },
+    entries: [
+      { monthsBack: -2, amount: 1800 },
+      { monthsBack: 3, amount: 2200 },
+    ],
     reasonNonRecovery: '',
     recoverySteps: '',
     status: 'DRAFT',
@@ -344,12 +382,12 @@ const BRANCH_NAME_BANK: Record<Branch, string[]> = {
 
 export const DEBTORS_SEED: Debtor[] = BRANCHES.flatMap((branch) =>
   DEBTOR_PROFILES.map((profile, i) =>
-    mk(
+    mkDebtor(
       branch,
       BRANCH_NAME_BANK[branch][i],
       profile.natureId,
       profile.descriptionId,
-      profile.amounts,
+      profile.entries,
       profile.reasonNonRecovery,
       profile.recoverySteps,
       `debtor-gen-${branch}-${i + 1}`,
