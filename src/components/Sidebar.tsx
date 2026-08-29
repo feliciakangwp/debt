@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { PERSONAS } from '../types';
 import { todayIso } from '../utils/aging';
@@ -49,6 +50,16 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
   const operational = hasOperationalAccess(persona);
   const financeTeam = isFinanceTeamPersona(persona);
   const cfr = hasCfrAccess(persona);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const toggleGroup = (header: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(header)) next.delete(header);
+      else next.add(header);
+      return next;
+    });
+  };
 
   const groups: NavGroup[] = [
     {
@@ -63,7 +74,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       ],
     },
     {
-      header: 'Debt Management (CFR-FIN)',
+      header: '(Fin) Call For Return',
       items: [
         { key: 'cfr-fin-period', label: 'Call for Return Period', visible: financeTeam },
         { key: 'cfr-fin-arrears', label: 'Arrears', visible: financeTeam },
@@ -77,7 +88,7 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       ],
     },
     {
-      header: 'Debt Management (CFR)',
+      header: 'Call For Return',
       items: [
         { key: 'cfr-arrears', label: 'Arrears', visible: cfr },
         { key: 'cfr-top10-debtors', label: 'Top 10 Debtors', visible: cfr },
@@ -141,25 +152,37 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         {groups.map((group) => {
           const visibleItems = group.items.filter((i) => i.visible);
           if (visibleItems.length === 0) return null;
+          const isCollapsed = collapsed.has(group.header);
           return (
             <div key={group.header} className="mb-4 last:mb-0">
-              <div className="mb-2 px-3 text-sm font-bold text-white">{group.header}</div>
-              <ul className="space-y-1">
-                {visibleItems.map((item) => (
-                  <li key={item.key}>
-                    <button
-                      onClick={() => onNavigate(item.key)}
-                      className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                        active === item.key
-                          ? 'bg-brand-gold font-semibold text-brand-navy'
-                          : 'text-white/85 hover:bg-white/10'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <button
+                onClick={() => toggleGroup(group.header)}
+                className="mb-2 flex w-full items-center justify-between px-3 text-sm font-bold text-white"
+                aria-expanded={!isCollapsed}
+              >
+                <span>{group.header}</span>
+                <span className={`text-xs text-white/60 transition-transform ${isCollapsed ? '-rotate-90' : ''}`}>
+                  ▼
+                </span>
+              </button>
+              {!isCollapsed && (
+                <ul className="space-y-1">
+                  {visibleItems.map((item) => (
+                    <li key={item.key}>
+                      <button
+                        onClick={() => onNavigate(item.key)}
+                        className={`w-full rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                          active === item.key
+                            ? 'bg-brand-gold font-semibold text-brand-navy'
+                            : 'text-white/85 hover:bg-white/10'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           );
         })}

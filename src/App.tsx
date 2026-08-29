@@ -8,6 +8,8 @@ import { DebtorsPage } from './pages/DebtorsPage';
 import { ArrearsSummaryPage } from './pages/ArrearsSummaryPage';
 import { CallForReturnPeriodPage } from './pages/CallForReturnPeriodPage';
 import { CfrArrearsPage } from './pages/CfrArrearsPage';
+import { CfrTopDebtorsPage } from './pages/CfrTopDebtorsPage';
+import { CfrArrears5YearsPage } from './pages/CfrArrears5YearsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
@@ -86,8 +88,8 @@ function Shell() {
 
         {page === 'cfr-fin-period' && <CallForReturnPeriodPage />}
         {page === 'cfr-fin-arrears' && <CfrArrearsPage consolidated />}
-        {page === 'cfr-fin-top10-debtors' && <PlaceholderPage title="Top 10 Debtors (CFR-FIN)" />}
-        {page === 'cfr-fin-arrears-5y' && <PlaceholderPage title="Arrears > 5 years (CFR-FIN)" />}
+        {page === 'cfr-fin-top10-debtors' && <CfrTopDebtorsPage consolidated />}
+        {page === 'cfr-fin-arrears-5y' && <CfrArrears5YearsPage consolidated />}
         {page === 'cfr-fin-loans-advances' && <PlaceholderPage title="Loans and Advances (CFR-FIN)" />}
         {page === 'cfr-fin-written-off' && <PlaceholderPage title="Written Off (CFR-FIN)" />}
         {page === 'cfr-fin-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" />}
@@ -95,8 +97,8 @@ function Shell() {
         {page === 'cfr-fin-reports' && <PlaceholderPage title="Reports (CFR-FIN)" />}
 
         {page === 'cfr-arrears' && <CfrArrearsPage consolidated={false} />}
-        {page === 'cfr-top10-debtors' && <PlaceholderPage title="Top 10 Debtors (CFR)" />}
-        {page === 'cfr-arrears-5y' && <PlaceholderPage title="Arrears > 5 years (CFR)" />}
+        {page === 'cfr-top10-debtors' && <CfrTopDebtorsPage consolidated={false} />}
+        {page === 'cfr-arrears-5y' && <CfrArrears5YearsPage consolidated={false} />}
         {page === 'cfr-loans-advances' && <PlaceholderPage title="Loans and Advances (CFR)" />}
         {page === 'cfr-written-off' && <PlaceholderPage title="Written Off (CFR)" />}
         {page === 'cfr-top10-written-off' && <PlaceholderPage title="Top 10 Written Off (CFR)" />}

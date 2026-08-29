@@ -1,105 +1,45 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
 import { CfrStatusBadge } from '../components/CfrStatusBadge';
+import { CfrActionButtons, CfrRejectBox, CfrSuperAdminPanel } from '../components/CfrSubmissionPanel';
+import { useCfrSubmissionWorkflow } from '../hooks/useCfrSubmissionWorkflow';
 import { formatCurrency } from '../utils/format';
 import { resolveDebtorBuckets } from '../utils/aging';
-import { financeReportVisibleDebtors, isFinanceTeamPersona, isSuperAdmin, visibleDebtors } from '../utils/visibility';
-import { getActiveOpenPeriod } from '../utils/callForReturn';
+import { financeReportVisibleDebtors, isSuperAdmin, visibleDebtors } from '../utils/visibility';
 import { aggregateDebtors, aggregatedTotalAR, aggregatedTotalInArrears } from '../utils/aggregate';
 import type { AggregatedRow } from '../utils/aggregate';
-import type { Branch, CfrArrearsSubmission, CfrSubmissionStatus } from '../types';
-import { BRANCHES } from '../types';
+import type { Branch, CfrSubmissionStatus } from '../types';
 
 interface CfrArrearsPageProps {
-  /** true = Debt Management (CFR-FIN): consolidated across all branches,
-   * read-only. false = Debt Management (CFR): grouped per branch, with the
+  /** true = (Fin) Call For Return: consolidated across all branches,
+   * read-only. false = Call For Return: grouped per branch, visible only to
+   * each branch's own Branch Rep/Reviewer 1/CPM (plus Super Admin), with the
    * Submit / Approve / Reject workflow. */
   consolidated: boolean;
 }
 
-function nextActionFor(
-  status: CfrSubmissionStatus,
-  role: string,
-): { kind: 'submit' | 'approve' } | null {
-  if (status === 'DRAFT' && role === 'BRANCH_REP') return { kind: 'submit' };
-  if (status === 'PENDING_REVIEW' && role === 'REVIEWER_1') return { kind: 'approve' };
-  if (status === 'SUPPORTED' && role === 'CPM') return { kind: 'approve' };
-  return null;
-}
-
-/** Super Admin can act on any branch's submission at any stage, so this
- * ignores role entirely and just returns the action for the status itself. */
-function actionForAnyRole(status: CfrSubmissionStatus): { kind: 'submit' | 'approve' } | null {
-  if (status === 'DRAFT') return { kind: 'submit' };
-  if (status === 'PENDING_REVIEW' || status === 'SUPPORTED') return { kind: 'approve' };
-  return null;
-}
-
 export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
-  const {
-    persona,
-    debtors,
-    natureList,
-    descriptionList,
-    simulatedToday,
-    callForReturnPeriods,
-    cfrArrearsSubmissions,
-    ensureCfrSubmissionsForPeriod,
-    submitCfrArrears,
-    approveCfrArrears,
-    rejectCfrArrears,
-  } = useApp();
-
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectComment, setRejectComment] = useState('');
-
-  const activePeriod = useMemo(
-    () => getActiveOpenPeriod(callForReturnPeriods, simulatedToday),
-    [callForReturnPeriods, simulatedToday],
-  );
-
-  useEffect(() => {
-    if (activePeriod) ensureCfrSubmissionsForPeriod(activePeriod.id, persona.label);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePeriod?.id]);
+  const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
+  const workflow = useCfrSubmissionWorkflow();
+  const { activePeriod, statusByBranch } = workflow;
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
-  const submissionsForPeriod: CfrArrearsSubmission[] = useMemo(
-    () => (activePeriod ? cfrArrearsSubmissions.filter((s) => s.periodId === activePeriod.id) : []),
-    [cfrArrearsSubmissions, activePeriod],
-  );
-  const statusByBranch = useMemo(
-    () => new Map(submissionsForPeriod.map((s) => [s.branch, s])),
-    [submissionsForPeriod],
-  );
-
   const rows: AggregatedRow[] = useMemo(() => {
     if (!activePeriod) return [];
-    // Branch Rep / Reviewer 1 / CPM see only their own branch's lines here;
-    // Finance Officer, Reviewer 1 FIN, CPM FIN and Super Admin see every
-    // branch's lines (still grouped per branch, not collapsed together).
-    const scoped = consolidated || isFinanceTeamPersona(persona)
+    // Consolidated (Fin) view and Super Admin see every branch's lines;
+    // otherwise Branch Rep / Reviewer 1 / CPM see only their own branch —
+    // Finance Officer, Reviewer 1 FIN and CPM FIN do not get a full
+    // cross-branch view here (unlike Arrears Report elsewhere in the app).
+    const scoped = consolidated || isSuperAdmin(persona)
       ? financeReportVisibleDebtors(persona, debtors)
       : visibleDebtors(persona, debtors);
     const withBuckets = scoped.map((d) => ({ ...d, ...resolveDebtorBuckets(d, simulatedToday) }));
     return aggregateDebtors(withBuckets, !consolidated);
   }, [activePeriod, consolidated, persona, debtors, simulatedToday]);
-
-  const ownSubmission = persona.branch ? statusByBranch.get(persona.branch) : undefined;
-  const ownAction = ownSubmission ? nextActionFor(ownSubmission.status, persona.role) : null;
-
-  const handleSubmit = (id: string) => submitCfrArrears(id, persona.label);
-  const handleApprove = (id: string) => approveCfrArrears(id, persona.label);
-  const handleConfirmReject = () => {
-    if (!rejectingId || rejectComment.trim() === '') return;
-    rejectCfrArrears(rejectingId, persona.label, rejectComment.trim());
-    setRejectingId(null);
-    setRejectComment('');
-  };
 
   const columns: ColumnDef<AggregatedRow>[] = [
     {
@@ -211,85 +151,26 @@ export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
     { key: 'steps', header: 'Recovery steps taken', accessor: (r) => r.recoverySteps, sortType: 'alpha' },
   ];
 
-  const title = consolidated ? 'Arrears (Debt Management CFR-FIN)' : 'Arrears (Debt Management CFR)';
+  const title = consolidated ? 'Arrears ((Fin) Call For Return)' : 'Arrears (Call For Return)';
 
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-brand-navy">{title}</h1>
-        <div className="flex items-center gap-2">
-          {!consolidated && ownSubmission && (
-            <>
-              <CfrStatusBadge status={ownSubmission.status} />
-              {ownAction?.kind === 'submit' && (
-                <button
-                  onClick={() => handleSubmit(ownSubmission.id)}
-                  className="rounded-md bg-brand-gold px-4 py-2 text-sm font-semibold text-brand-navy shadow-sm hover:brightness-95"
-                >
-                  Submit
-                </button>
-              )}
-              {ownAction?.kind === 'approve' && (
-                <>
-                  <button
-                    onClick={() => setRejectingId(ownSubmission.id)}
-                    className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-                  >
-                    Reject
-                  </button>
-                  <button
-                    onClick={() => handleApprove(ownSubmission.id)}
-                    className="rounded-md border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
-                  >
-                    Approve
-                  </button>
-                </>
-              )}
-            </>
-          )}
-        </div>
+        <div className="flex items-center gap-2">{!consolidated && <CfrActionButtons workflow={workflow} />}</div>
       </div>
       <p className="mb-1 text-sm text-slate-500">Report generated on {simulatedToday}.</p>
       <p className="mb-5 text-sm text-slate-500">
         {consolidated
           ? 'Consolidated across all branches by Nature of AR/ Arrears and Description.'
-          : isFinanceTeamPersona(persona)
+          : isSuperAdmin(persona)
             ? 'Showing all branches.'
-            : `Showing records for ${persona.branch} only.`}
+            : persona.branch
+              ? `Showing records for ${persona.branch} only.`
+              : 'No branch is assigned to this persona, so no lines are shown here.'}
       </p>
 
-      {rejectingId && (
-        <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3">
-          <label className="mb-1 block text-xs font-semibold text-red-700">
-            Reason for rejecting (required)
-          </label>
-          <div className="flex items-center gap-2">
-            <input
-              autoFocus
-              value={rejectComment}
-              onChange={(e) => setRejectComment(e.target.value)}
-              placeholder="Explain why this submission is being rejected"
-              className="flex-1 rounded-md border border-red-300 px-2 py-1.5 text-sm focus:border-red-500 focus:outline-none"
-            />
-            <button
-              onClick={() => {
-                setRejectingId(null);
-                setRejectComment('');
-              }}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleConfirmReject}
-              disabled={rejectComment.trim() === ''}
-              className="rounded-md border border-red-300 px-3 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Confirm Reject
-            </button>
-          </div>
-        </div>
-      )}
+      {!consolidated && <CfrRejectBox workflow={workflow} />}
 
       {!activePeriod ? (
         <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-16 text-center text-sm text-slate-400">
@@ -297,61 +178,7 @@ export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
         </div>
       ) : (
         <>
-          {isSuperAdmin(persona) && (
-            <div className="mb-4 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <table className="min-w-full text-sm">
-                <thead className="bg-brand-navy text-white">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Branch</th>
-                    <th className="px-3 py-2 text-left font-semibold">Status</th>
-                    <th className="px-3 py-2 text-left font-semibold">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {BRANCHES.map((b: Branch, idx) => {
-                    const sub = statusByBranch.get(b);
-                    if (!sub) return null;
-                    const action = actionForAnyRole(sub.status);
-                    return (
-                      <tr key={b} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
-                        <td className="px-3 py-2">{b}</td>
-                        <td className="px-3 py-2">
-                          <CfrStatusBadge status={sub.status} />
-                        </td>
-                        <td className="px-3 py-2">
-                          {action?.kind === 'submit' && (
-                            <button
-                              onClick={() => handleSubmit(sub.id)}
-                              className="rounded-md bg-brand-gold px-3 py-1 text-xs font-semibold text-brand-navy hover:brightness-95"
-                            >
-                              Submit
-                            </button>
-                          )}
-                          {action?.kind === 'approve' && (
-                            <div className="flex gap-2">
-                              <button
-                                onClick={() => setRejectingId(sub.id)}
-                                className="rounded-md border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
-                              >
-                                Reject
-                              </button>
-                              <button
-                                onClick={() => handleApprove(sub.id)}
-                                className="rounded-md border border-emerald-300 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50"
-                              >
-                                Approve
-                              </button>
-                            </div>
-                          )}
-                          {!action && <span className="text-xs text-slate-400">—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {!consolidated && <CfrSuperAdminPanel workflow={workflow} />}
           <DataTable columns={columns} rows={rows} rowKey={(r) => r.key} />
         </>
       )}

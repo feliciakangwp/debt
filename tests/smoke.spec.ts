@@ -51,7 +51,7 @@ async function setPersona(page: Page, label: string) {
 
 /** Exact-match nav click, since "Arrears" and friends appear in more than
  * one section for some personas. Pass `nth` to pick among duplicates in DOM
- * order (0 = the Debt Management (CFR-FIN) copy, 1 = the (CFR) copy). */
+ * order (0 = the (Fin) Call For Return copy, 1 = the Call For Return copy). */
 async function gotoTabExact(page: Page, label: string, nth = 0) {
   const nav = page.locator('nav ul li button');
   const labels = await nav.allTextContents();
@@ -211,6 +211,63 @@ test('CFR arrears submission goes Draft -> Pending Review -> Supported -> Approv
   await page.click('button:has-text("Approve")');
   await page.waitForTimeout(200);
   await expect(page.locator('main').getByText('Approved', { exact: true }).first()).toBeVisible();
+});
+
+test('sidebar sections can be collapsed and re-expanded by clicking their header', async ({ page }) => {
+  await page.goto('/');
+  await setPersona(page, 'Super Admin');
+
+  const groupHeader = page.locator('nav > div > button', { hasText: '(Fin) Call For Return' });
+  const periodTab = page.locator('nav ul li button', { hasText: 'Call for Return Period' });
+  await expect(periodTab).toBeVisible();
+  await groupHeader.click();
+  await expect(periodTab).toBeHidden();
+  await groupHeader.click();
+  await expect(periodTab).toBeVisible();
+});
+
+test('Call For Return Arrears is branch-scoped only — Finance Officer and FIN reviewers do not get a cross-branch view', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Finance Officer');
+  await gotoTabExact(page, 'Arrears', 1);
+  await expect(page.locator('main')).toContainText('No branch is assigned to this persona');
+
+  // The consolidated (Fin) copy is unaffected — still cross-branch.
+  await gotoTabExact(page, 'Arrears', 0);
+  await expect(page.locator('main')).toContainText('Consolidated across all branches');
+
+  await setPersona(page, 'Reviewer 1 FIN');
+  await gotoTabExact(page, 'Arrears', 1);
+  await expect(page.locator('main')).toContainText('Showing records for FIN only');
+});
+
+test('Top 10 Debtors and Arrears > 5 years pull individual debtor rows with the right columns', async ({ page }) => {
+  await page.goto('/');
+  await setPersona(page, 'Finance Officer');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+  await page.click('button:has-text("+ New")');
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await modal.locator('input').first().fill('SMOKE-TOP10-PERIOD');
+  const dateInputs = modal.locator('input[type=date]');
+  await dateInputs.nth(0).fill('2026-01-01');
+  await dateInputs.nth(1).fill('2030-01-01');
+  await modal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  const expectedColumns = [
+    'Status', 'SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description', 'Total in Arrears',
+    'AR in Arrears ≤ 6 months', 'AR in Arrears (6-12 months)', 'AR in Arrears (1-2yrs)',
+    'AR in Arrears (2-3yrs)', 'AR in Arrears (3-4yrs)', 'AR in Arrears (4-5yrs)', 'AR in Arrears ≥ 5 years',
+  ];
+
+  for (const tab of ['Top 10 Debtors', 'Arrears > 5 years']) {
+    await gotoTabExact(page, tab, 0); // (Fin) Call For Return copy, consolidated across branches
+    const headers = (await page.locator('table thead th').allTextContents()).map((h) => h.replace('⇅', '').trim());
+    expect(headers, `${tab} columns`).toEqual(expectedColumns);
+    const rowCount = await page.locator('table tbody tr').count();
+    expect(rowCount, `${tab} should have at most 10 rows`).toBeLessThanOrEqual(10);
+  }
 });
 
 test('Reviewer reject on CFR arrears sends it back to Draft', async ({ page }) => {
