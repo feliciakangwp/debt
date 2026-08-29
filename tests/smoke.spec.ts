@@ -468,7 +468,7 @@ test('Reports tab auto-generates once a period closes, scoped per branch and con
   expect(download.suggestedFilename()).toMatch(/^CallForReturn-Reports-.*\.xlsx$/);
 });
 
-test('seed data covers every branch, including TIB, SIB and FIN', async ({ page }) => {
+test('seed data covers every branch with 20 debtors each, including TIB, SIB and FIN', async ({ page }) => {
   await page.goto('/');
 
   for (const branch of ['PSB', 'TIB', 'SIB', 'PCB', 'FIN']) {
@@ -476,7 +476,7 @@ test('seed data covers every branch, including TIB, SIB and FIN', async ({ page 
     await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
     await page.waitForTimeout(150);
     const rowCount = await page.locator('table tbody tr').count();
-    expect(rowCount, `Branch Rep ${branch} should have seeded debtors`).toBeGreaterThan(5);
+    expect(rowCount, `Branch Rep ${branch} should have 20 seeded debtors`).toBe(20);
   }
 
   await setPersona(page, 'Finance Officer');
@@ -484,6 +484,40 @@ test('seed data covers every branch, including TIB, SIB and FIN', async ({ page 
   await page.waitForTimeout(150);
   const branches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
   expect([...branches].sort()).toEqual(['FIN', 'PCB', 'PSB', 'SIB', 'TIB']);
+});
+
+test('a version bump on the persisted schema reseeds a returning browser\'s sample debtors', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    const oldState = {
+      natureList: [{ id: 'nat-tax', name: 'Tax', active: true }],
+      descriptionList: [
+        { id: 'desc-p-offence-motor-vehicle', name: 'P Offence – Motor Vehicle', natureId: 'nat-tax', active: true },
+      ],
+      debtors: [
+        {
+          id: 'old-debtor-1', status: 'SUPPORTED', branch: 'PSB', name: 'OLD CACHED DEBTOR',
+          natureId: 'nat-tax', descriptionId: 'desc-p-offence-motor-vehicle',
+          notInArrears: 0, arrears6m: 100, arrears6to12m: 0, arrears1to2y: 0, arrears2to3y: 0,
+          arrears3to4y: 0, arrears4to5y: 0, arrears5yPlus: 0,
+          reasonNonRecovery: '', recoverySteps: '', caseReference: '', auditLog: [],
+        },
+      ],
+      personaId: 'FINANCE',
+      simulatedToday: '2026-01-01',
+      dataVersion: 2,
+      callForReturnPeriods: [],
+      cfrArrearsSubmissions: [],
+    };
+    localStorage.setItem('debt-management-module-v1', JSON.stringify(oldState));
+  });
+  await page.reload();
+
+  await setPersona(page, 'Branch Rep PSB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  await page.waitForTimeout(150);
+  await expect(page.locator('main')).not.toContainText('OLD CACHED DEBTOR');
+  await expect(page.locator('table tbody tr')).toHaveCount(20);
 });
 
 test('Export button on every Call For Return / (Fin) Call For Return report tab downloads what is on screen', async ({ page }) => {

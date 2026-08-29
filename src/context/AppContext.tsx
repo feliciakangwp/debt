@@ -12,19 +12,17 @@ import type {
   ReferenceItem,
 } from '../types';
 import { BRANCHES, PERSONAS } from '../types';
-import {
-  DEBTORS_SEED,
-  DESCRIPTION_ID_MIGRATION,
-  DESCRIPTION_SEED,
-  NATURE_SEED,
-} from '../data/seed';
+import { DEBTORS_SEED, DESCRIPTION_SEED, NATURE_SEED } from '../data/seed';
 import { todayIso } from '../utils/aging';
 
 const STORAGE_KEY = 'debt-management-module-v1';
 
-// Bump whenever a change requires overwriting persisted reference-list data
-// (e.g. the Description dataset refresh below) rather than just adding to it.
-const DATA_VERSION = 2;
+// Bump whenever a change requires overwriting persisted reference-list or
+// seed debtor data (e.g. a refreshed sample dataset) rather than just
+// adding to it. A version bump replaces every browser's saved debtor list
+// with the current DEBTORS_SEED — only do this for sample/test data
+// refreshes, since it discards anything a tester added through the UI.
+const DATA_VERSION = 3;
 
 interface PersistedState {
   natureList: ReferenceItem[];
@@ -35,14 +33,6 @@ interface PersistedState {
   dataVersion: number;
   callForReturnPeriods: CallForReturnPeriod[];
   cfrArrearsSubmissions: CfrArrearsSubmission[];
-}
-
-function migrateDebtorDescriptionIds(debtors: Debtor[]): Debtor[] {
-  return debtors.map((d) =>
-    DESCRIPTION_ID_MIGRATION[d.descriptionId]
-      ? { ...d, descriptionId: DESCRIPTION_ID_MIGRATION[d.descriptionId] }
-      : d,
-  );
 }
 
 // Backfills fields added after a debtor may have already been persisted to
@@ -71,7 +61,7 @@ function loadInitial(): PersistedState {
         return {
           natureList: parsed.natureList ?? NATURE_SEED,
           descriptionList: DESCRIPTION_SEED,
-          debtors: normalizeDebtors(migrateDebtorDescriptionIds(parsed.debtors ?? DEBTORS_SEED)),
+          debtors: DEBTORS_SEED,
           personaId: parsed.personaId ?? 'FINANCE',
           simulatedToday: parsed.simulatedToday ?? todayIso(),
           dataVersion: DATA_VERSION,
