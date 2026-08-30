@@ -4,7 +4,7 @@ import { AREntriesEditor } from './AREntriesEditor';
 import { StatusBadge, WriteOffStatusBadge } from './StatusBadge';
 import { formatCurrency } from '../utils/format';
 import {
-  buildTransactionLedger,
+  buildTransactionLedgerForEntry,
   daysBetween,
   debtorAmountRows,
   firstArrearDate,
@@ -21,6 +21,10 @@ const TRANSACTION_LABELS: Record<TransactionType, string> = {
 
 interface DebtorDetailsModalProps {
   debtor: Debtor;
+  /** Index of the specific AR entry (line item) whose row was clicked in
+   * List of Debtors — scopes the Transaction Listing to just that line,
+   * not the debtor's other, unrelated entries. */
+  entryIndex: number;
   onClose: () => void;
 }
 
@@ -58,7 +62,7 @@ function DiffField({
   );
 }
 
-export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps) {
+export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetailsModalProps) {
   const {
     persona,
     natureList,
@@ -250,7 +254,7 @@ export function DebtorDetailsModal({ debtor, onClose }: DebtorDetailsModalProps)
     supportWriteOff(debtor.id, persona.label);
   };
 
-  const ledger = buildTransactionLedger(debtor);
+  const ledger = buildTransactionLedgerForEntry(debtor, entryIndex, simulatedToday);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

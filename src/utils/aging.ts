@@ -282,19 +282,35 @@ export interface TransactionRow {
 }
 
 /**
- * The debtor's transaction history: one "Arrears" row per AR entry, dated
- * by its payment due date (the gross original amount — unaffected by any
- * write-off), plus a "Write Off" row once the write-off is Supported.
- * "Paid" is included in TransactionType for when a payments feature exists,
- * but nothing produces one yet. Sorted oldest first with a running balance.
+ * The transaction history for one specific AR entry (line item) of a
+ * debtor, identified by its index within debtorAmountRows — not the whole
+ * debtor's combined history, since a debtor can carry several unrelated
+ * line items (e.g. one not yet due, one overdue) and each List of Debtors
+ * row/popup should only ever show its own line's figures.
+ * Starts with a single "Arrears" row dated by that entry's payment due date
+ * (its gross original amount). If the debtor's write-off is Supported and
+ * actually reduced this particular entry — per the same oldest-first order
+ * debtorAmountRowsNetOfWriteOff applies — adds a "Write Off" row for just
+ * the portion knocked off this entry, not the debtor's full write-off
+ * amount. "Paid" is included in TransactionType for when a payments feature
+ * exists, but nothing produces one yet. Sorted oldest first with a running
+ * balance scoped to this entry alone.
  */
-export function buildTransactionLedger(d: Debtor): TransactionRow[] {
-  const rows: { date: string; type: TransactionType; amount: number }[] = debtorAmountRows(d)
-    .filter((r) => r.requiredPaidDate)
-    .map((r) => ({ date: r.requiredPaidDate, type: 'ARREARS' as const, amount: r.amount }));
+export function buildTransactionLedgerForEntry(d: Debtor, entryIndex: number, today: string): TransactionRow[] {
+  const grossRows = debtorAmountRows(d);
+  const entry = grossRows[entryIndex];
+  if (!entry || !entry.requiredPaidDate) return [];
+
+  const rows: { date: string; type: TransactionType; amount: number }[] = [
+    { date: entry.requiredPaidDate, type: 'ARREARS', amount: entry.amount },
+  ];
 
   if (d.writeOff && d.writeOff.status === 'SUPPORTED') {
-    rows.push({ date: d.writeOff.dateOfWriteOff, type: 'WRITE_OFF', amount: -d.writeOff.writeOffAmount });
+    const netAmount = debtorAmountRowsNetOfWriteOff(d, today)[entryIndex]?.amount ?? entry.amount;
+    const knockedOff = entry.amount - netAmount;
+    if (knockedOff > 0) {
+      rows.push({ date: d.writeOff.dateOfWriteOff, type: 'WRITE_OFF', amount: -knockedOff });
+    }
   }
 
   rows.sort((a, b) => a.date.localeCompare(b.date));

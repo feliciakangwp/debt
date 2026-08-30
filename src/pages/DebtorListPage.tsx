@@ -13,6 +13,10 @@ import type { Debtor, DebtorStatus } from '../types';
 interface DebtorEntryRow {
   key: string;
   debtor: Debtor;
+  /** Index of this AR entry within debtorAmountRows(debtor) — identifies
+   * which specific line item this row is, so the popup's Transaction
+   * Listing can be scoped to just this one instead of the whole debtor. */
+  entryIndex: number;
   status: DebtorStatus;
   name: string;
   branch: Debtor['branch'];
@@ -31,6 +35,7 @@ export function DebtorListPage() {
   const [showNew, setShowNew] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
   const [viewingDebtorId, setViewingDebtorId] = useState<string | null>(null);
+  const [viewingEntryIndex, setViewingEntryIndex] = useState<number>(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const viewingDebtor = viewingDebtorId ? (debtors.find((d) => d.id === viewingDebtorId) ?? null) : null;
 
@@ -46,6 +51,7 @@ export function DebtorListPage() {
         out.push({
           key: `${d.id}-${idx}`,
           debtor: d,
+          entryIndex: idx,
           status: d.status,
           name: d.name,
           branch: d.branch,
@@ -185,11 +191,14 @@ export function DebtorListPage() {
       sortType: 'alpha',
       render: (r) => (
         <button
-          onClick={() =>
-            canEdit && (r.status === 'DRAFT' || r.status === 'PENDING_REVIEW')
-              ? setEditingDebtor(r.debtor)
-              : setViewingDebtorId(r.debtor.id)
-          }
+          onClick={() => {
+            if (canEdit && (r.status === 'DRAFT' || r.status === 'PENDING_REVIEW')) {
+              setEditingDebtor(r.debtor);
+            } else {
+              setViewingDebtorId(r.debtor.id);
+              setViewingEntryIndex(r.entryIndex);
+            }
+          }}
           className="font-medium text-brand-navy underline decoration-dotted underline-offset-2 hover:text-brand-gold"
         >
           {r.name}
@@ -312,7 +321,11 @@ export function DebtorListPage() {
       )}
 
       {viewingDebtor && (
-        <DebtorDetailsModal debtor={viewingDebtor} onClose={() => setViewingDebtorId(null)} />
+        <DebtorDetailsModal
+          debtor={viewingDebtor}
+          entryIndex={viewingEntryIndex}
+          onClose={() => setViewingDebtorId(null)}
+        />
       )}
     </div>
   );

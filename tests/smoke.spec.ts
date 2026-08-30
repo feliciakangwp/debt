@@ -732,7 +732,21 @@ test('a Supported write-off knocks the amount off Total in Arrears and appears o
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   const firstRow = page.locator('table tbody tr').first();
   const debtorName = (await firstRow.locator('button').innerText()).trim();
-  await firstRow.locator('button').click();
+  // This debtor has two line items (a not-yet-due 4,000 and an overdue
+  // 12,000) — write off against the overdue one specifically, since a
+  // write-off only ever knocks off overdue entries.
+  const headersBefore = (await page.locator('table thead th').allTextContents()).map((h) => h.replace('⇅', '').trim());
+  const amountColIdxBefore = headersBefore.indexOf('Amount');
+  const debtorRowsBefore = page.locator('table tbody tr', { hasText: debtorName });
+  let overdueRow = debtorRowsBefore.first();
+  for (let i = 0; i < (await debtorRowsBefore.count()); i++) {
+    const amt = (await debtorRowsBefore.nth(i).locator('td').nth(amountColIdxBefore).innerText()).trim();
+    if (amt === '$12,000') {
+      overdueRow = debtorRowsBefore.nth(i);
+      break;
+    }
+  }
+  await overdueRow.locator('button').click();
   const modal = page.locator('div.fixed.inset-0.z-50');
   await modal.locator('button:has-text("Write Off")').click();
   await modal.locator('input[type=date]').fill('2027-02-01');
@@ -743,15 +757,29 @@ test('a Supported write-off knocks the amount off Total in Arrears and appears o
 
   await setPersona(page, 'Reviewer 1 PCB');
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
-  await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
+  const headersReviewer = (await page.locator('table thead th').allTextContents()).map((h) => h.replace('⇅', '').trim());
+  const amountColIdxReviewer = headersReviewer.indexOf('Amount');
+  const reviewerDebtorRows = page.locator('table tbody tr', { hasText: debtorName });
+  let reviewerOverdueRow = reviewerDebtorRows.first();
+  for (let i = 0; i < (await reviewerDebtorRows.count()); i++) {
+    const amt = (await reviewerDebtorRows.nth(i).locator('td').nth(amountColIdxReviewer).innerText()).trim();
+    if (amt === '$12,000') {
+      reviewerOverdueRow = reviewerDebtorRows.nth(i);
+      break;
+    }
+  }
+  await reviewerOverdueRow.locator('button').click();
   const reviewerModal = page.locator('div.fixed.inset-0.z-50');
   await reviewerModal.locator('button:has-text("Support")').click();
   await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
 
-  // Ledger shows the original Arrears entries plus a Write Off row.
+  // Ledger for this specific (overdue) line item shows its Arrears entry
+  // plus the Write Off row that knocked it down — not the debtor's other,
+  // unrelated not-yet-due line item.
   const ledgerText = await reviewerModal.locator('table').last().innerText();
   expect(ledgerText).toContain('Arrears');
   expect(ledgerText).toContain('Write Off');
+  expect(ledgerText).not.toContain('4,000');
   await reviewerModal.locator('button:has-text("✕")').click();
 
   // List of Debtors' Amount column reflects the knock-off too: this
