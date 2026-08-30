@@ -62,6 +62,37 @@ async function gotoTabExact(page: Page, label: string, nth = 0) {
   await page.waitForTimeout(200);
 }
 
+/** DataTable now paginates at 10 rows — walks every page of the current
+ * table via its "Next" button, collecting `cellSelector`'s text from each,
+ * so assertions that need the whole dataset (not just page 1) still work. */
+/** Finds a row containing `text`, paging forward from wherever the table
+ * currently is until it's found (DataTable resets to page 1 whenever the
+ * underlying rows change, e.g. after a status update, so this re-searches
+ * from page 1 each time it's called). Returns an empty-match locator if
+ * not found on any page. */
+async function findRowAcrossPages(page: Page, text: string) {
+  for (;;) {
+    const row = page.locator('tr', { hasText: text }).first();
+    if ((await row.count()) > 0) return row;
+    const nextBtn = page.locator('button', { hasText: 'Next' });
+    if ((await nextBtn.count()) === 0 || (await nextBtn.isDisabled())) return row;
+    await nextBtn.click();
+    await page.waitForTimeout(150);
+  }
+}
+
+async function collectAcrossPages(page: Page, cellSelector: string): Promise<string[]> {
+  const values: string[] = [];
+  for (;;) {
+    values.push(...(await page.locator(cellSelector).allTextContents()));
+    const nextBtn = page.locator('button', { hasText: 'Next' });
+    if ((await nextBtn.count()) === 0 || (await nextBtn.isDisabled())) break;
+    await nextBtn.click();
+    await page.waitForTimeout(150);
+  }
+  return values;
+}
+
 test.describe('no console errors and no blank pages across every persona x tab', () => {
   for (const persona of PERSONAS) {
     test(`${persona}`, async ({ page }) => {
@@ -111,13 +142,13 @@ test('Finance team sees every branch on Debtors Report, branch roles see only th
   await setPersona(page, 'Finance Officer');
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const financeBranches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
+  const financeBranches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect(financeBranches.size, 'Finance Officer should see multiple branches').toBeGreaterThan(1);
 
   await setPersona(page, 'Branch Rep PSB');
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const branchRepBranches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
+  const branchRepBranches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect([...branchRepBranches]).toEqual(['PSB']);
 });
 
@@ -134,13 +165,17 @@ test('Branch Rep can create and submit a debtor end to end', async ({ page }) =>
   await modal.locator('button:has-text("Save")').click();
   await page.waitForTimeout(200);
 
-  const draftRow = page.locator('tr', { hasText: 'CI Smoke Test Co' }).first();
+  // New debtors are appended at the end of the list, so with 10-row
+  // pagination it likely isn't on page 1 — page forward to find it.
+  const draftRow = await findRowAcrossPages(page, 'CI Smoke Test Co');
   await expect(draftRow.locator('text=Draft')).toBeVisible();
 
   await draftRow.locator('input[type=checkbox]').check();
   await page.click('button:has-text("Submit")');
   await page.waitForTimeout(200);
-  await expect(draftRow.locator('text=Pending Review')).toBeVisible();
+  // Submitting changes the dataset, which resets pagination to page 1.
+  const submittedRow = await findRowAcrossPages(page, 'CI Smoke Test Co');
+  await expect(submittedRow.locator('text=Pending Review')).toBeVisible();
 });
 
 test('Super Admin sees every tab with no restriction', async ({ page }) => {
@@ -478,14 +513,15 @@ test('seed data covers every branch with 20 debtors each, including TIB, SIB and
     await page.waitForTimeout(150);
     // Rows are per AR entry, not per debtor — some seeded debtors have more
     // than one — so count distinct debtor names instead of raw row count.
-    const names = new Set(await page.locator('table tbody tr button').allTextContents());
+    // Paginated at 10 rows, so walk every page to see them all.
+    const names = new Set(await collectAcrossPages(page, 'table tbody tr button'));
     expect(names.size, `Branch Rep ${branch} should have 20 distinct seeded debtors`).toBe(20);
   }
 
   await setPersona(page, 'Finance Officer');
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const branches = new Set(await page.locator('table tbody tr td:nth-child(3)').allTextContents());
+  const branches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect([...branches].sort()).toEqual(['FIN', 'PCB', 'PSB', 'SIB', 'TIB']);
 });
 
@@ -520,7 +556,7 @@ test('a version bump on the persisted schema reseeds a returning browser\'s samp
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.waitForTimeout(150);
   await expect(page.locator('main')).not.toContainText('OLD CACHED DEBTOR');
-  const names = new Set(await page.locator('table tbody tr button').allTextContents());
+  const names = new Set(await collectAcrossPages(page, 'table tbody tr button'));
   expect(names.size).toBe(20);
 });
 
@@ -634,11 +670,11 @@ test('seed debtors have a Case Reference and a Required Paid Date', async ({ pag
   await setPersona(page, 'Branch Rep PSB');
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
 
-  const caseRefs = await page.locator('table tbody tr td:nth-child(2)').allTextContents();
+  const caseRefs = await collectAcrossPages(page, 'table tbody tr td:nth-child(2)');
   expect(caseRefs.length).toBeGreaterThan(0);
   expect(caseRefs.every((c) => c.trim() !== '' && c.trim() !== '-')).toBe(true);
 
-  const dueDates = await page.locator('table tbody tr td:nth-child(9)').allTextContents();
+  const dueDates = await collectAcrossPages(page, 'table tbody tr td:nth-child(9)');
   expect(dueDates.every((d) => d.trim() !== '-')).toBe(true);
 });
 
