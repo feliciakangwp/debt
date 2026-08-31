@@ -13,6 +13,7 @@ import { CfrArrears5YearsPage } from './pages/CfrArrears5YearsPage';
 import { CfrReportsPage } from './pages/CfrReportsPage';
 import { WriteOffReportPage } from './pages/WriteOffReportPage';
 import { CfrWriteOffReportPage } from './pages/CfrWriteOffReportPage';
+import { CfrTopWriteOffPage } from './pages/CfrTopWriteOffPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
@@ -116,9 +117,7 @@ function Shell() {
             amountColumnLabel="Amount of Write Off"
           />
         )}
-        {page === 'cfr-fin-top10-written-off' && (
-          <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" exportFileName="FinCallForReturn-Top10WrittenOff.xlsx" />
-        )}
+        {page === 'cfr-fin-top10-written-off' && <CfrTopWriteOffPage consolidated />}
         {page === 'cfr-fin-to-be-written-off' && (
           <CfrWriteOffReportPage
             consolidated
@@ -145,9 +144,7 @@ function Shell() {
             amountColumnLabel="Amount of Write Off"
           />
         )}
-        {page === 'cfr-top10-written-off' && (
-          <PlaceholderPage title="Top 10 Written Off (CFR)" exportFileName="CallForReturn-Top10WrittenOff.xlsx" />
-        )}
+        {page === 'cfr-top10-written-off' && <CfrTopWriteOffPage consolidated={false} />}
         {page === 'cfr-to-be-written-off' && (
           <CfrWriteOffReportPage
             consolidated={false}

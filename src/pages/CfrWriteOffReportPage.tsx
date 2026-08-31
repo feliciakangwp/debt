@@ -28,6 +28,10 @@ interface CfrWriteOffReportPageProps {
   title: string;
   reportLabel: string;
   amountColumnLabel: string;
+  /** Further narrows/sorts the branch-scoped write-off rows — e.g. Top 10
+   * Written Off keeps only the 10 largest by amount. Defaults to showing
+   * every matching row untouched. */
+  selectRows?: (rows: WriteOffRow[]) => WriteOffRow[];
 }
 
 /**
@@ -44,6 +48,7 @@ export function CfrWriteOffReportPage({
   title,
   reportLabel,
   amountColumnLabel,
+  selectRows,
 }: CfrWriteOffReportPageProps) {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
   const workflow = useCfrSubmissionWorkflow();
@@ -54,8 +59,9 @@ export function CfrWriteOffReportPage({
 
   const rows: WriteOffRow[] = useMemo(() => {
     if (!activePeriod) return [];
-    return buildWriteOffRows(writeOffVisibleDebtors(persona, debtors), targetStatus);
-  }, [activePeriod, persona, debtors, targetStatus]);
+    const built = buildWriteOffRows(writeOffVisibleDebtors(persona, debtors), targetStatus);
+    return selectRows ? selectRows(built) : built;
+  }, [activePeriod, persona, debtors, targetStatus, selectRows]);
 
   const columns: ColumnDef<WriteOffRow>[] = [
     {

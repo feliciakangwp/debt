@@ -23,3 +23,10 @@ export function buildWriteOffRows(
     d.writeOffs.filter((w) => w.status === targetStatus).map((w) => ({ debtor: d, writeOff: w })),
   );
 }
+
+/** Top 10 by write-off amount, within whatever rows the viewer is already
+ * scoped to (their own branch, or every branch for the (Fin) consolidated
+ * copy / Super Admin) — shared by the Top 10 Written Off CFR tab. */
+export function selectTop10WriteOffs(rows: WriteOffRow[]): WriteOffRow[] {
+  return [...rows].sort((a, b) => b.writeOff.writeOffAmount - a.writeOff.writeOffAmount).slice(0, 10);
+}

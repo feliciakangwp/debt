@@ -930,3 +930,105 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   names = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
   expect(names.some((n) => n.trim() === toBeDebtor)).toBe(true);
 });
+
+test('List of Debtors Status column shows an in-flight write-off status alongside the debtor status', async ({ page }) => {
+  await page.goto('/');
+
+  await setPersona(page, 'Branch Rep PSB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  const debtorName = 'Lim Wee Keng';
+  const row = page.locator('table tbody tr', { hasText: debtorName }).first();
+  await row.locator('button').click();
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await modal.locator('button:has-text("Write Off")').click();
+  await modal.locator('input[type=date]').fill('2027-01-01');
+  await modal.locator('input[type=number]').fill('1000');
+  await modal.getByPlaceholder('Free text').last().fill('List status check');
+  await modal.locator('button:has-text("Save"):not([disabled])').click();
+  await modal.locator('button:has-text("✕")').click();
+  await page.waitForTimeout(150);
+
+  // Saved (not yet submitted) shows "To be Written Off" right in the list,
+  // alongside the debtor's own "Supported" status.
+  await expect(row).toContainText('To be Written Off');
+  await expect(row).toContainText('Supported');
+
+  await row.locator('button').click();
+  const modal2 = page.locator('div.fixed.inset-0.z-50');
+  await modal2.locator('button:has-text("Submit")').click();
+  await modal2.locator('button:has-text("✕")').click();
+  await page.waitForTimeout(150);
+  await expect(row).toContainText('Request for Write Off');
+
+  await setPersona(page, 'Reviewer 1 PSB');
+  await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+  const reviewerRow = page.locator('table tbody tr', { hasText: debtorName }).first();
+  await reviewerRow.locator('button').click();
+  const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+  await reviewerModal.locator('button:has-text("Support")').click();
+  await reviewerModal.locator('button:has-text("✕")').click();
+  await page.waitForTimeout(150);
+
+  // Once Supported it's history, not an in-flight write-off — the list only
+  // shows the debtor's own status again.
+  await expect(reviewerRow.locator('span', { hasText: 'To be Written Off' })).toHaveCount(0);
+  await expect(reviewerRow.locator('span', { hasText: 'Request for Write Off' })).toHaveCount(0);
+});
+
+test('Top 10 Written Off Call For Return tab pulls Supported write-offs, sorted by amount, capped at 10', async ({ page }) => {
+  await page.goto('/');
+
+  const smallerDebtor = 'Lim Wee Keng';
+  const biggerDebtor = 'Chong Siew Fong';
+
+  const writeOffAndSupport = async (debtorName: string, amount: string) => {
+    await setPersona(page, 'Branch Rep PSB');
+    await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+    await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
+    const modal = page.locator('div.fixed.inset-0.z-50');
+    await modal.locator('button:has-text("Write Off")').click();
+    await modal.locator('input[type=date]').fill('2027-01-01');
+    await modal.locator('input[type=number]').fill(amount);
+    await modal.getByPlaceholder('Free text').last().fill('Top 10 write off check');
+    await modal.locator('button:has-text("Submit")').last().click();
+    await modal.locator('button:has-text("✕")').click();
+
+    await setPersona(page, 'Reviewer 1 PSB');
+    await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
+    await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
+    const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+    await reviewerModal.locator('button:has-text("Support")').click();
+    await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
+    await reviewerModal.locator('button:has-text("✕")').click();
+  };
+
+  await writeOffAndSupport(smallerDebtor, '1000');
+  await writeOffAndSupport(biggerDebtor, '30000');
+
+  await setPersona(page, 'Finance Officer');
+  await page.locator('nav ul li button', { hasText: 'Call for Return Period' }).click();
+  await page.click('button:has-text("+ New")');
+  const periodModal = page.locator('div.fixed.inset-0.z-50');
+  await periodModal.locator('input').first().fill('SMOKE-TOP10-WRITEOFF-PERIOD');
+  const dateInputs = periodModal.locator('input[type=date]');
+  await dateInputs.nth(0).fill('2026-01-01');
+  await dateInputs.nth(1).fill('2030-01-01');
+  await periodModal.locator('button:has-text("Save")').click();
+  await page.waitForTimeout(200);
+
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoTabExact(page, 'Top 10 Written Off');
+  await expect(page.locator('table thead th')).toContainText([
+    'Status', 'SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description',
+    'Amount of Write Off', 'Days in Arrears', 'Reasons for write off',
+  ]);
+
+  const names = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+  expect(names.some((n) => n.trim() === smallerDebtor)).toBe(true);
+  expect(names.some((n) => n.trim() === biggerDebtor)).toBe(true);
+  // Sorted by write-off amount descending — the bigger one comes first.
+  expect(names[0].trim()).toBe(biggerDebtor);
+
+  const rowCount = await page.locator('table tbody tr').count();
+  expect(rowCount).toBeLessThanOrEqual(10);
+});

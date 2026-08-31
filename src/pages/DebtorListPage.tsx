@@ -4,7 +4,7 @@ import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
 import { DebtorFormModal } from '../components/DebtorFormModal';
 import { DebtorDetailsModal } from '../components/DebtorDetailsModal';
-import { StatusBadge } from '../components/StatusBadge';
+import { StatusBadge, WriteOffStatusBadge } from '../components/StatusBadge';
 import { formatCurrency } from '../utils/format';
 import { debtorAmountRowsNetOfWriteOff } from '../utils/aging';
 import { isSuperAdmin, visibleDebtors } from '../utils/visibility';
@@ -181,7 +181,18 @@ export function DebtorListPage() {
       key: 'status',
       header: 'Status',
       accessor: (r) => r.status,
-      render: (r) => <StatusBadge status={r.status} />,
+      render: (r) => {
+        // A write-off in flight (To be Written Off / Request for Write Off)
+        // is surfaced right alongside the debtor's own status, so it's
+        // visible when scanning the whole list — not just inside the popup.
+        const activeWriteOff = r.debtor.writeOffs.find((w) => w.status !== 'SUPPORTED');
+        return (
+          <div className="flex flex-wrap items-center gap-1">
+            <StatusBadge status={r.status} />
+            {activeWriteOff && <WriteOffStatusBadge status={activeWriteOff.status} />}
+          </div>
+        );
+      },
       sortType: 'alpha',
     },
     {
