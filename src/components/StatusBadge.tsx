@@ -32,7 +32,7 @@ const WRITE_OFF_STYLES: Record<WriteOffStatus, string> = {
 
 const WRITE_OFF_LABELS: Record<WriteOffStatus, string> = {
   TO_BE_WRITTEN_OFF: 'To be Written Off',
-  PENDING: 'Pending',
+  PENDING: 'Request for Write Off',
   SUPPORTED: 'Supported',
 };
 

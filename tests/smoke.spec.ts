@@ -636,7 +636,7 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   const submitBtn = modal.locator('button:has-text("Submit")');
   await expect(submitBtn).toBeEnabled();
   await submitBtn.click();
-  await expect(modal.locator('span', { hasText: 'Pending' })).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'Request for Write Off' })).toBeVisible();
   await expect(modal.locator('button:has-text("Write Off")')).toBeHidden();
   await modal.locator('button:has-text("✕")').click();
 
@@ -645,7 +645,7 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const cpmModal = page.locator('div.fixed.inset-0.z-50');
-  await expect(cpmModal.locator('span', { hasText: 'Pending' })).toBeVisible();
+  await expect(cpmModal.locator('span', { hasText: 'Request for Write Off' })).toBeVisible();
   await expect(cpmModal.locator('button:has-text("Support")')).toBeHidden();
   await cpmModal.locator('button:has-text("✕")').click();
 
@@ -764,7 +764,7 @@ test('Write Off Save keeps it editable as To be Written Off, visible in the new 
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const modal2 = page.locator('div.fixed.inset-0.z-50');
   await modal2.locator('button:has-text("Submit")').click();
-  await expect(modal2.locator('span', { hasText: 'Pending' })).toBeVisible();
+  await expect(modal2.locator('span', { hasText: 'Request for Write Off' })).toBeVisible();
   await modal2.locator('button:has-text("✕")').click();
 
   await page.getByRole('button', { name: 'To Be Written Off', exact: true }).click();
