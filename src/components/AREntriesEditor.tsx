@@ -7,10 +7,6 @@ import {
 } from '../utils/aging';
 import type { AREntry } from '../types';
 
-function makeEntryId(): string {
-  return `entry-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
 interface AREntriesEditorProps {
   entries: AREntry[];
   onChange: (entries: AREntry[]) => void;
@@ -28,15 +24,6 @@ export function AREntriesEditor({
   preserveLegacyBuckets = false,
   legacyDistributionSummary = null,
 }: AREntriesEditorProps) {
-  const addEntry = () => {
-    onChange([...entries, { id: makeEntryId(), amount: 0, requiredPaidDate: '' }]);
-  };
-
-  const removeEntry = (id: string) => {
-    if (entries.length <= 1) return;
-    onChange(entries.filter((e) => e.id !== id));
-  };
-
   const updateEntry = (id: string, patch: Partial<Omit<AREntry, 'id'>>) => {
     onChange(entries.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   };
@@ -49,15 +36,8 @@ export function AREntriesEditor({
     <div className="col-span-2">
       <div className="mb-1 flex items-center justify-between">
         <label className="text-xs font-semibold text-slate-500">
-          Total AR (each amount can have its own Required Paid Date)
+          Total AR (one amount and Required Paid Date per debtor)
         </label>
-        <button
-          type="button"
-          onClick={addEntry}
-          className="rounded-md border border-brand-navy/30 px-2 py-0.5 text-xs font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
-        >
-          + Add amount
-        </button>
       </div>
 
       {preserveLegacyBuckets && (
@@ -97,16 +77,6 @@ export function AREntriesEditor({
                 >
                   Today
                 </button>
-                {entries.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeEntry(entry.id)}
-                    title="Remove this amount"
-                    className="shrink-0 rounded-md px-2 py-1 text-slate-400 hover:bg-red-50 hover:text-red-500"
-                  >
-                    ✕
-                  </button>
-                )}
               </div>
               {rowLabel && (
                 <p className="mt-1 text-xs text-slate-500">

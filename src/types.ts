@@ -65,7 +65,10 @@ export interface DebtorEditProposal {
   name: string;
   natureId: string;
   descriptionId: string;
-  /** Omitted when the AR amounts/dates weren't touched (e.g. a legacy
+  /** Case Reference can only ever change through this Request to Edit flow
+   * — never edited directly, even once Supported. */
+  caseReference: string;
+  /** Omitted when the AR amount/date weren't touched (e.g. a legacy
    * fixed-bucket record edited without setting a Required Paid Date), so
    * the original bucket distribution is left untouched on approval. */
   arEntries?: AREntry[];
@@ -108,12 +111,13 @@ export interface Debtor {
   arEntries?: AREntry[];
   /** Set while status is EDIT_REQUESTED: the changes Branch Rep asked for. */
   editProposal?: DebtorEditProposal;
-  /** Set once Branch Rep saves or submits a Write Off for this debtor. One
-   * per debtor. Editable by Branch Rep while To be Written Off; locked once
-   * Pending, when only Reviewer 1 (or Super Admin) can move it to
-   * Supported — once Supported, the write-off amount is knocked off the
-   * debtor's arrears (see resolveDebtorBuckets). */
-  writeOff?: WriteOffRecord;
+  /** Write-offs are repeatable — a debtor can be partially written off more
+   * than once over time. At most one entry is ever "in flight" (To be
+   * Written Off or Pending) at a time; once that one reaches Supported,
+   * Branch Rep can start another if there's still a balance left. Every
+   * Supported entry's amount is knocked off the debtor's arrears
+   * cumulatively (see resolveDebtorBuckets). */
+  writeOffs: WriteOffRecord[];
   auditLog: AuditLogEntry[];
 }
 

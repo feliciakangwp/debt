@@ -107,15 +107,24 @@ function knockOffOldestFirst(buckets: AgingBuckets, amount: number): AgingBucket
 }
 
 /**
+ * Sum of every write-off on this debtor that has reached Supported —
+ * write-offs are repeatable, so a debtor can accumulate more than one over
+ * time. Anything still To be Written Off or Pending isn't counted yet.
+ */
+export function totalSupportedWriteOff(d: Debtor): number {
+  return d.writeOffs.filter((w) => w.status === 'SUPPORTED').reduce((sum, w) => sum + w.writeOffAmount, 0);
+}
+
+/**
  * Returns the aging buckets that should actually be displayed/summed for a
  * debtor, resolved live against `today` so records shift columns as the
  * simulated date changes:
  *  - arEntries (multiple amount + due date pairs) take priority when present.
  *  - a single legacy requiredPaidDate/totalARAmount pair is used next.
  *  - otherwise the directly-entered legacy bucket fields are returned as-is.
- * Once the debtor's Write Off is Supported, its amount is then knocked off
- * the result (oldest arrears first) — every report/total that goes through
- * this function reflects the write-off automatically.
+ * Once any of the debtor's write-offs are Supported, their combined amount is
+ * then knocked off the result (oldest arrears first) — every report/total
+ * that goes through this function reflects the write-off automatically.
  */
 export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
   let buckets: AgingBuckets;
@@ -135,8 +144,9 @@ export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
       arrears5yPlus: d.arrears5yPlus,
     };
   }
-  if (d.writeOff?.status === 'SUPPORTED') {
-    buckets = knockOffOldestFirst(buckets, d.writeOff.writeOffAmount);
+  const writtenOff = totalSupportedWriteOff(d);
+  if (writtenOff > 0) {
+    buckets = knockOffOldestFirst(buckets, writtenOff);
   }
   return buckets;
 }
@@ -159,21 +169,22 @@ export function debtorAmountRows(d: Debtor): { amount: number; requiredPaidDate:
 }
 
 /**
- * Same rows as debtorAmountRows, but with a Supported write-off's amount
- * knocked off — for the List of Debtors' Amount column, which otherwise
- * kept showing the pre-write-off figure even though every aggregate report
- * already reflects the reduction via resolveDebtorBuckets. Reduces the rows
- * actually in arrears (due on or before `today`) first, earliest due date
- * first, mirroring resolveDebtorBuckets' oldest-bucket-first order since
- * each row falls into exactly one bucket. Rows not yet due are never
- * touched, same as resolveDebtorBuckets leaves notInArrears alone.
+ * Same rows as debtorAmountRows, but with all Supported write-offs' combined
+ * amount knocked off — for the List of Debtors' Amount column, which
+ * otherwise kept showing the pre-write-off figure even though every
+ * aggregate report already reflects the reduction via resolveDebtorBuckets.
+ * Reduces the rows actually in arrears (due on or before `today`) first,
+ * earliest due date first, mirroring resolveDebtorBuckets' oldest-bucket-
+ * first order since each row falls into exactly one bucket. Rows not yet due
+ * are never touched, same as resolveDebtorBuckets leaves notInArrears alone.
  */
 export function debtorAmountRowsNetOfWriteOff(
   d: Debtor,
   today: string,
 ): { amount: number; requiredPaidDate: string }[] {
   const rows = debtorAmountRows(d);
-  if (!d.writeOff || d.writeOff.status !== 'SUPPORTED') return rows;
+  const writtenOff = totalSupportedWriteOff(d);
+  if (writtenOff <= 0) return rows;
 
   const overdueOldestFirst = rows
     .map((r, index) => ({ ...r, index }))
@@ -181,7 +192,7 @@ export function debtorAmountRowsNetOfWriteOff(
     .sort((a, b) => a.requiredPaidDate.localeCompare(b.requiredPaidDate));
 
   const netAmountByIndex = new Map<number, number>();
-  let remaining = d.writeOff.writeOffAmount;
+  let remaining = writtenOff;
   for (const r of overdueOldestFirst) {
     if (remaining <= 0) break;
     const take = Math.min(r.amount, remaining);
@@ -288,15 +299,14 @@ export interface TransactionRow {
  * line items (e.g. one not yet due, one overdue) and each List of Debtors
  * row/popup should only ever show its own line's figures.
  * Starts with a single "Arrears" row dated by that entry's payment due date
- * (its gross original amount). If the debtor's write-off is Supported and
- * actually reduced this particular entry — per the same oldest-first order
- * debtorAmountRowsNetOfWriteOff applies — adds a "Write Off" row for just
- * the portion knocked off this entry, not the debtor's full write-off
- * amount. "Paid" is included in TransactionType for when a payments feature
- * exists, but nothing produces one yet. Sorted oldest first with a running
- * balance scoped to this entry alone.
+ * (its gross original amount). Every debtor's arEntries is capped at a
+ * single entry, so any Supported write-off necessarily applies entirely to
+ * that one entry — adds one "Write Off" row per Supported write-off record.
+ * "Paid" is included in TransactionType for when a payments feature exists,
+ * but nothing produces one yet. Sorted oldest first with a running balance
+ * scoped to this entry alone.
  */
-export function buildTransactionLedgerForEntry(d: Debtor, entryIndex: number, today: string): TransactionRow[] {
+export function buildTransactionLedgerForEntry(d: Debtor, entryIndex: number): TransactionRow[] {
   const grossRows = debtorAmountRows(d);
   const entry = grossRows[entryIndex];
   if (!entry || !entry.requiredPaidDate) return [];
@@ -305,11 +315,9 @@ export function buildTransactionLedgerForEntry(d: Debtor, entryIndex: number, to
     { date: entry.requiredPaidDate, type: 'ARREARS', amount: entry.amount },
   ];
 
-  if (d.writeOff && d.writeOff.status === 'SUPPORTED') {
-    const netAmount = debtorAmountRowsNetOfWriteOff(d, today)[entryIndex]?.amount ?? entry.amount;
-    const knockedOff = entry.amount - netAmount;
-    if (knockedOff > 0) {
-      rows.push({ date: d.writeOff.dateOfWriteOff, type: 'WRITE_OFF', amount: -knockedOff });
+  for (const w of d.writeOffs) {
+    if (w.status === 'SUPPORTED') {
+      rows.push({ date: w.dateOfWriteOff, type: 'WRITE_OFF', amount: -w.writeOffAmount });
     }
   }
 

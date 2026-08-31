@@ -23,7 +23,7 @@ const STORAGE_KEY = 'debt-management-module-v1';
 // adding to it. A version bump replaces every browser's saved debtor list
 // with the current DEBTORS_SEED — only do this for sample/test data
 // refreshes, since it discards anything a tester added through the UI.
-const DATA_VERSION = 4;
+const DATA_VERSION = 5;
 
 interface PersistedState {
   natureList: ReferenceItem[];
@@ -49,6 +49,7 @@ function normalizeDebtors(debtors: Debtor[]): Debtor[] {
     reasonNonRecovery: d.reasonNonRecovery ?? '',
     recoverySteps: d.recoverySteps ?? '',
     caseReference: d.caseReference ?? '',
+    writeOffs: d.writeOffs ?? [],
     auditLog: d.auditLog ?? [],
   }));
 }
@@ -117,7 +118,7 @@ interface AppContextValue {
   deleteDebtors: (ids: string[]) => void;
   updateDebtorDetails: (
     id: string,
-    patch: Pick<Debtor, 'caseReference' | 'reasonNonRecovery' | 'recoverySteps'>,
+    patch: Pick<Debtor, 'reasonNonRecovery' | 'recoverySteps'>,
     actorLabel: string,
   ) => void;
   requestEdit: (id: string, proposal: DebtorEditProposal, actorLabel: string) => void;
@@ -129,7 +130,7 @@ interface AppContextValue {
     actorLabel: string,
     submit: boolean,
   ) => void;
-  supportWriteOff: (id: string, actorLabel: string) => void;
+  supportWriteOff: (id: string, writeOffId: string, actorLabel: string) => void;
   callForReturnPeriods: CallForReturnPeriod[];
   addCallForReturnPeriod: (period: Omit<CallForReturnPeriod, 'id'>) => void;
   updateCallForReturnPeriod: (id: string, patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>) => void;
@@ -248,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateDebtorDetails = (
     id: string,
-    patch: Pick<Debtor, 'caseReference' | 'reasonNonRecovery' | 'recoverySteps'>,
+    patch: Pick<Debtor, 'reasonNonRecovery' | 'recoverySteps'>,
     actorLabel: string,
   ) => {
     setDebtors((prev) =>
@@ -297,6 +298,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           name: proposal.name,
           natureId: proposal.natureId,
           descriptionId: proposal.descriptionId,
+          caseReference: proposal.caseReference,
           ...arFields,
           editProposal: undefined,
           status: 'SUPPORTED',
@@ -320,11 +322,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  // Covers both "Save" (status stays/becomes To be Written Off, still
-  // editable by Branch Rep) and "Submit" (status becomes Pending, routed to
-  // Reviewer 1, locked from further Branch Rep edits) — upserts the
-  // debtor's one write-off record either way, since Save can be used
-  // repeatedly before an eventual Submit.
+  // Write-offs are repeatable: at most one "in flight" entry (To be Written
+  // Off or Pending) exists at a time — this upserts that one, either
+  // creating it fresh or updating it while Save is used repeatedly before
+  // an eventual Submit. Once that entry reaches Supported it's no longer
+  // "in flight", so the next Save/Submit starts a brand new entry — that's
+  // how a debtor can be written off more than once over time.
   const saveWriteOff = (
     id: string,
     input: Pick<WriteOffRecord, 'dateOfWriteOff' | 'writeOffAmount' | 'daysInArrears' | 'reasonForWriteOff'>,
@@ -334,31 +337,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDebtors((prev) =>
       prev.map((d) => {
         if (d.id !== id) return d;
-        const isNew = !d.writeOff;
-        const writeOff: WriteOffRecord = {
-          id: d.writeOff?.id ?? `writeoff-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          status: submit ? 'PENDING' : 'TO_BE_WRITTEN_OFF',
-          ...input,
-        };
+        const activeIndex = d.writeOffs.findIndex((w) => w.status !== 'SUPPORTED');
+        const isNew = activeIndex === -1;
+        const status = submit ? 'PENDING' : 'TO_BE_WRITTEN_OFF';
+        const writeOffs: WriteOffRecord[] = isNew
+          ? [
+              ...d.writeOffs,
+              {
+                id: `writeoff-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                status,
+                ...input,
+              },
+            ]
+          : d.writeOffs.map((w, i) => (i === activeIndex ? { ...w, status, ...input } : w));
         const action = submit
           ? 'Write off submitted for review'
           : isNew
             ? 'Write off saved (to be written off)'
             : 'Write off updated (to be written off)';
-        return appendAuditLog({ ...d, writeOff }, action, actorLabel);
+        return appendAuditLog({ ...d, writeOffs }, action, actorLabel);
       }),
     );
   };
 
-  const supportWriteOff = (id: string, actorLabel: string) => {
+  const supportWriteOff = (id: string, writeOffId: string, actorLabel: string) => {
     setDebtors((prev) =>
       prev.map((d) => {
-        if (d.id !== id || !d.writeOff) return d;
-        return appendAuditLog(
-          { ...d, writeOff: { ...d.writeOff, status: 'SUPPORTED' } },
-          'Write off supported',
-          actorLabel,
+        if (d.id !== id) return d;
+        const writeOffs = d.writeOffs.map((w) =>
+          w.id === writeOffId && w.status === 'PENDING' ? { ...w, status: 'SUPPORTED' as const } : w,
         );
+        return appendAuditLog({ ...d, writeOffs }, 'Write off supported', actorLabel);
       }),
     );
   };

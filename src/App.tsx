@@ -12,6 +12,7 @@ import { CfrTopDebtorsPage } from './pages/CfrTopDebtorsPage';
 import { CfrArrears5YearsPage } from './pages/CfrArrears5YearsPage';
 import { CfrReportsPage } from './pages/CfrReportsPage';
 import { WriteOffReportPage } from './pages/WriteOffReportPage';
+import { CfrWriteOffReportPage } from './pages/CfrWriteOffReportPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './utils/visibility';
 
@@ -107,13 +108,25 @@ function Shell() {
           <PlaceholderPage title="Loans and Advances (CFR-FIN)" exportFileName="FinCallForReturn-LoansAndAdvances.xlsx" />
         )}
         {page === 'cfr-fin-written-off' && (
-          <PlaceholderPage title="Written Off (CFR-FIN)" exportFileName="FinCallForReturn-WrittenOff.xlsx" />
+          <CfrWriteOffReportPage
+            consolidated
+            targetStatus="SUPPORTED"
+            title="Written Off ((Fin) Call For Return)"
+            reportLabel="Written Off"
+            amountColumnLabel="Amount of Write Off"
+          />
         )}
         {page === 'cfr-fin-top10-written-off' && (
           <PlaceholderPage title="Top 10 Written Off (CFR-FIN)" exportFileName="FinCallForReturn-Top10WrittenOff.xlsx" />
         )}
         {page === 'cfr-fin-to-be-written-off' && (
-          <PlaceholderPage title="To be Written Off (CFR-FIN)" exportFileName="FinCallForReturn-ToBeWrittenOff.xlsx" />
+          <CfrWriteOffReportPage
+            consolidated
+            targetStatus="TO_BE_WRITTEN_OFF"
+            title="To be Written Off ((Fin) Call For Return)"
+            reportLabel="To Be Written Off"
+            amountColumnLabel="Amount to be Written Off"
+          />
         )}
         {page === 'cfr-fin-reports' && <CfrReportsPage consolidated />}
 
@@ -124,13 +137,25 @@ function Shell() {
           <PlaceholderPage title="Loans and Advances (CFR)" exportFileName="CallForReturn-LoansAndAdvances.xlsx" />
         )}
         {page === 'cfr-written-off' && (
-          <PlaceholderPage title="Written Off (CFR)" exportFileName="CallForReturn-WrittenOff.xlsx" />
+          <CfrWriteOffReportPage
+            consolidated={false}
+            targetStatus="SUPPORTED"
+            title="Written Off (Call For Return)"
+            reportLabel="Written Off"
+            amountColumnLabel="Amount of Write Off"
+          />
         )}
         {page === 'cfr-top10-written-off' && (
           <PlaceholderPage title="Top 10 Written Off (CFR)" exportFileName="CallForReturn-Top10WrittenOff.xlsx" />
         )}
         {page === 'cfr-to-be-written-off' && (
-          <PlaceholderPage title="To be Written Off (CFR)" exportFileName="CallForReturn-ToBeWrittenOff.xlsx" />
+          <CfrWriteOffReportPage
+            consolidated={false}
+            targetStatus="TO_BE_WRITTEN_OFF"
+            title="To be Written Off (Call For Return)"
+            reportLabel="To Be Written Off"
+            amountColumnLabel="Amount to be Written Off"
+          />
         )}
         {page === 'cfr-reports' && <CfrReportsPage consolidated={false} />}
       </main>

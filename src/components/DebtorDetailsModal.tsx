@@ -9,6 +9,7 @@ import {
   debtorAmountRows,
   firstArrearDate,
   summarizeBuckets,
+  totalSupportedWriteOff,
 } from '../utils/aging';
 import { isSuperAdmin } from '../utils/visibility';
 import type { AREntry, Debtor, TransactionType } from '../types';
@@ -90,17 +91,16 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   // changeable outside that review flow.
   const canEditDetails = isBranchRep && debtor.status === 'SUPPORTED';
 
-  // --- Case Reference / Reason / Recovery Steps: editable once Supported ---
-  const [caseReference, setCaseReference] = useState(debtor.caseReference);
+  // --- Reason / Recovery Steps: editable once Supported. Case Reference is
+  // locked outside the Request to Edit flow (see below) — once a debtor is
+  // Supported it can never be changed by a direct Save. ---
   const [reasonNonRecovery, setReasonNonRecovery] = useState(debtor.reasonNonRecovery);
   const [recoverySteps, setRecoverySteps] = useState(debtor.recoverySteps);
   const detailsChanged =
-    caseReference !== debtor.caseReference ||
-    reasonNonRecovery !== debtor.reasonNonRecovery ||
-    recoverySteps !== debtor.recoverySteps;
+    reasonNonRecovery !== debtor.reasonNonRecovery || recoverySteps !== debtor.recoverySteps;
 
   const handleSaveDetails = () => {
-    updateDebtorDetails(debtor.id, { caseReference, reasonNonRecovery, recoverySteps }, persona.label);
+    updateDebtorDetails(debtor.id, { reasonNonRecovery, recoverySteps }, persona.label);
   };
 
   // --- Request to Edit (Supported only): unlocks the other fields ---
@@ -108,6 +108,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   const [proposalName, setProposalName] = useState(debtor.name);
   const [proposalNatureId, setProposalNatureId] = useState(debtor.natureId);
   const [proposalDescriptionId, setProposalDescriptionId] = useState(debtor.descriptionId);
+  const [proposalCaseReference, setProposalCaseReference] = useState(debtor.caseReference);
   const [initialProposalEntries] = useState<AREntry[]>(() =>
     debtorAmountRows(debtor).map((row) => ({ id: makeEntryId(), ...row })),
   );
@@ -147,6 +148,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     proposalName.trim() !== '' &&
     proposalNatureId !== '' &&
     proposalDescriptionId !== '' &&
+    proposalCaseReference.trim() !== '' &&
     proposalEntries.length > 0 &&
     (preserveLegacyBuckets || proposalEntries.every((e) => e.requiredPaidDate !== ''));
 
@@ -158,6 +160,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
         name: proposalName.trim(),
         natureId: proposalNatureId,
         descriptionId: proposalDescriptionId,
+        caseReference: proposalCaseReference.trim(),
         arEntries: preserveLegacyBuckets ? undefined : proposalEntries,
       },
       persona.label,
@@ -183,9 +186,19 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   // --- diff computation for Edit Requested ---
   const proposal = debtor.status === 'EDIT_REQUESTED' ? debtor.editProposal : undefined;
   const currentEntries = debtorAmountRows(debtor);
+  // Scoped to just the AR entry (line item) that was clicked in List of
+  // Debtors — a debtor's Total AR here should never be compiled with other
+  // lines.
+  const scopedCurrentEntries = currentEntries[entryIndex] !== undefined ? [currentEntries[entryIndex]] : [];
+  const scopedProposalEntries = proposal?.arEntries
+    ? proposal.arEntries[entryIndex] !== undefined
+      ? [proposal.arEntries[entryIndex]]
+      : proposal.arEntries
+    : undefined;
   const nameChanged = proposal ? proposal.name !== debtor.name : false;
   const natureChanged = proposal ? proposal.natureId !== debtor.natureId : false;
   const descChanged = proposal ? proposal.descriptionId !== debtor.descriptionId : false;
+  const caseReferenceChanged = proposal ? proposal.caseReference !== debtor.caseReference : false;
   const entriesChanged = proposal?.arEntries
     ? entriesSignature(proposal.arEntries) !== entriesSignature(currentEntries)
     : false;
@@ -193,11 +206,19 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   // --- Write Off: Branch Rep saves (To be Written Off, still editable) or
   // submits (Pending, locked, routed to Reviewer 1). Reviewer 1 then
   // supports it (Supported), which knocks the amount off the debtor's
-  // arrears via resolveDebtorBuckets. ---
+  // arrears via resolveDebtorBuckets. Write-offs are repeatable: at most one
+  // record is ever "in flight" (not yet Supported) at a time; once that one
+  // is Supported, Branch Rep can start another if there's still a balance
+  // left on this line item. ---
   const [writingOff, setWritingOff] = useState(false);
   const [writeOffDate, setWriteOffDate] = useState(simulatedToday);
   const [writeOffAmount, setWriteOffAmount] = useState('');
   const [writeOffReason, setWriteOffReason] = useState('');
+
+  const activeWriteOff = debtor.writeOffs.find((w) => w.status !== 'SUPPORTED');
+  const supportedWriteOffTotal = totalSupportedWriteOff(debtor);
+  const entryGrossAmount = currentEntries[entryIndex]?.amount ?? 0;
+  const remainingBalance = entryGrossAmount - supportedWriteOffTotal;
 
   const arrearStart = firstArrearDate(debtor, simulatedToday);
   const daysInArrears = arrearStart ? daysBetween(arrearStart, writeOffDate) : null;
@@ -205,14 +226,15 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     writeOffDate !== '' &&
     writeOffAmount.trim() !== '' &&
     Number(writeOffAmount) > 0 &&
+    Number(writeOffAmount) <= remainingBalance &&
     writeOffReason.trim() !== '' &&
     daysInArrears !== null &&
     daysInArrears >= 0;
 
   const handleStartWriteOff = () => {
-    setWriteOffDate(debtor.writeOff?.dateOfWriteOff ?? simulatedToday);
-    setWriteOffAmount(debtor.writeOff ? String(debtor.writeOff.writeOffAmount) : '');
-    setWriteOffReason(debtor.writeOff?.reasonForWriteOff ?? '');
+    setWriteOffDate(activeWriteOff?.dateOfWriteOff ?? simulatedToday);
+    setWriteOffAmount(activeWriteOff ? String(activeWriteOff.writeOffAmount) : '');
+    setWriteOffReason(activeWriteOff?.reasonForWriteOff ?? '');
     setWritingOff(true);
   };
 
@@ -236,14 +258,14 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   // read-only summary view — doesn't depend on the form's local state,
   // which is only populated while the form is actually open.
   const handleSubmitExistingWriteOff = () => {
-    if (!debtor.writeOff) return;
+    if (!activeWriteOff) return;
     saveWriteOff(
       debtor.id,
       {
-        dateOfWriteOff: debtor.writeOff.dateOfWriteOff,
-        writeOffAmount: debtor.writeOff.writeOffAmount,
-        daysInArrears: debtor.writeOff.daysInArrears,
-        reasonForWriteOff: debtor.writeOff.reasonForWriteOff,
+        dateOfWriteOff: activeWriteOff.dateOfWriteOff,
+        writeOffAmount: activeWriteOff.writeOffAmount,
+        daysInArrears: activeWriteOff.daysInArrears,
+        reasonForWriteOff: activeWriteOff.reasonForWriteOff,
       },
       persona.label,
       true,
@@ -251,10 +273,13 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   };
 
   const handleSupportWriteOff = () => {
-    supportWriteOff(debtor.id, persona.label);
+    if (!activeWriteOff) return;
+    supportWriteOff(debtor.id, activeWriteOff.id, persona.label);
   };
 
-  const ledger = buildTransactionLedgerForEntry(debtor, entryIndex, simulatedToday);
+  const writeOffHistory = debtor.writeOffs.filter((w) => w.status === 'SUPPORTED');
+
+  const ledger = buildTransactionLedgerForEntry(debtor, entryIndex);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -360,11 +385,11 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
           ) : (
             <div className="col-span-2">
               <label className="mb-1 block text-xs font-semibold text-slate-500">Total AR</label>
-              {entriesChanged && proposal?.arEntries ? (
+              {entriesChanged && scopedProposalEntries ? (
                 <>
                   <div className="mb-1 text-xs font-semibold text-slate-400">Current</div>
                   <div className="mb-2 space-y-1">
-                    {currentEntries.map((e, i) => (
+                    {scopedCurrentEntries.map((e, i) => (
                       <div
                         key={i}
                         className="flex justify-between rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-400 line-through"
@@ -376,9 +401,9 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                   </div>
                   <div className="mb-1 text-xs font-semibold text-sky-600">Proposed</div>
                   <div className="space-y-1">
-                    {proposal.arEntries.map((e) => (
+                    {scopedProposalEntries.map((e, i) => (
                       <div
-                        key={e.id}
+                        key={e.id ?? i}
                         className="flex justify-between rounded-md border border-sky-300 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-800"
                       >
                         <span>{formatCurrency(e.amount)}</span>
@@ -389,7 +414,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                 </>
               ) : (
                 <div className="space-y-1">
-                  {currentEntries.map((e, i) => (
+                  {scopedCurrentEntries.map((e, i) => (
                     <div
                       key={i}
                       className="flex justify-between rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-700"
@@ -405,13 +430,21 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
 
           <div className="col-span-2">
             <label className="mb-1 block text-xs font-semibold text-slate-500">Case Reference</label>
-            <input
-              value={caseReference}
-              onChange={(e) => setCaseReference(e.target.value)}
-              disabled={!canEditDetails}
-              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none disabled:bg-slate-100"
-              placeholder="Free text"
-            />
+            {requestingEdit ? (
+              <input
+                value={proposalCaseReference}
+                onChange={(e) => setProposalCaseReference(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                placeholder="Free text"
+              />
+            ) : (
+              <DiffField
+                label=""
+                current={debtor.caseReference}
+                proposed={proposal?.caseReference}
+                changed={caseReferenceChanged}
+              />
+            )}
           </div>
 
           <div className="col-span-2">
@@ -473,7 +506,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
           <div className="col-span-2 border-t border-slate-200 pt-3">
             <div className="mb-2 flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-500">Write Off</label>
-              {debtor.writeOff && <WriteOffStatusBadge status={debtor.writeOff.status} />}
+              {activeWriteOff && <WriteOffStatusBadge status={activeWriteOff.status} />}
             </div>
 
             {writingOff ? (
@@ -538,27 +571,27 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                   </button>
                 </div>
               </div>
-            ) : debtor.writeOff ? (
+            ) : activeWriteOff ? (
               <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <div className="text-xs font-semibold text-slate-400">Date of Write Off</div>
-                    <div className="text-slate-700">{debtor.writeOff.dateOfWriteOff}</div>
+                    <div className="text-slate-700">{activeWriteOff.dateOfWriteOff}</div>
                   </div>
                   <div>
                     <div className="text-xs font-semibold text-slate-400">Write Off Amount</div>
-                    <div className="text-slate-700">{formatCurrency(debtor.writeOff.writeOffAmount)}</div>
+                    <div className="text-slate-700">{formatCurrency(activeWriteOff.writeOffAmount)}</div>
                   </div>
                   <div>
                     <div className="text-xs font-semibold text-slate-400">Days in Arrears</div>
-                    <div className="text-slate-700">{debtor.writeOff.daysInArrears}</div>
+                    <div className="text-slate-700">{activeWriteOff.daysInArrears}</div>
                   </div>
                   <div className="col-span-2">
                     <div className="text-xs font-semibold text-slate-400">Reasons for Write-Offs</div>
-                    <div className="text-slate-700">{debtor.writeOff.reasonForWriteOff}</div>
+                    <div className="text-slate-700">{activeWriteOff.reasonForWriteOff}</div>
                   </div>
                 </div>
-                {isBranchRep && debtor.writeOff.status === 'TO_BE_WRITTEN_OFF' && (
+                {isBranchRep && activeWriteOff.status === 'TO_BE_WRITTEN_OFF' && (
                   <div className="flex justify-end gap-2">
                     <button
                       onClick={handleStartWriteOff}
@@ -574,7 +607,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                     </button>
                   </div>
                 )}
-                {isReviewer && debtor.writeOff.status === 'PENDING' && (
+                {isReviewer && activeWriteOff.status === 'PENDING' && (
                   <div className="flex justify-end">
                     <button
                       onClick={handleSupportWriteOff}
@@ -586,7 +619,9 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                 )}
               </div>
             ) : isBranchRep ? (
-              arrearStart ? (
+              remainingBalance <= 0 && supportedWriteOffTotal > 0 ? (
+                <p className="text-xs text-slate-400">This line has been fully written off.</p>
+              ) : arrearStart ? (
                 <button
                   onClick={handleStartWriteOff}
                   className="rounded-md border border-brand-navy/30 px-4 py-1.5 text-sm font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
@@ -598,6 +633,28 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
               )
             ) : (
               <p className="text-xs text-slate-400">No write-off has been submitted for this debtor.</p>
+            )}
+
+            {writeOffHistory.length > 0 && (
+              <div className="mt-3">
+                <div className="mb-1 text-xs font-semibold text-slate-400">Write-off history</div>
+                <div className="space-y-1">
+                  {writeOffHistory.map((w) => (
+                    <div
+                      key={w.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600"
+                    >
+                      <span className="shrink-0">{w.dateOfWriteOff}</span>
+                      <span className="shrink-0 font-semibold text-emerald-700">
+                        {formatCurrency(w.writeOffAmount)}
+                      </span>
+                      <span className="truncate text-slate-500" title={w.reasonForWriteOff}>
+                        {w.reasonForWriteOff}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
