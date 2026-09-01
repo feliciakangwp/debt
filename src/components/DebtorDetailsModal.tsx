@@ -513,7 +513,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
               <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-xs font-semibold text-slate-500">Date of Final Approval</label>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Write-off Approval Date</label>
                     <input
                       type="date"
                       value={writeOffDate}
@@ -575,7 +575,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
               <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <div className="text-xs font-semibold text-slate-400">Date of Final Approval</div>
+                    <div className="text-xs font-semibold text-slate-400">Write-off Approval Date</div>
                     <div className="text-slate-700">{activeWriteOff.dateOfWriteOff}</div>
                   </div>
                   <div>
