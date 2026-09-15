@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 const PERSONAS = [
   'Branch Rep PSB', 'Branch Rep TIB', 'Branch Rep SIB', 'Branch Rep PCB', 'Branch Rep FIN',
@@ -79,6 +79,16 @@ async function findRowAcrossPages(page: Page, text: string) {
     await nextBtn.click();
     await page.waitForTimeout(150);
   }
+}
+
+/** The Debtor Details modal now has "Details" / "Write Offs (N)" tabs — the
+ * write-off form/summary, its records table, and the transaction ledger all
+ * live under the latter, unmounted until it's clicked. The tab's own label
+ * ("Write Offs (N)") contains "Write Off" as a substring, so callers must
+ * use exact-text matches for the actual "Write Off" action button to avoid
+ * matching this tab button too. */
+async function openWriteOffsTab(modal: Locator) {
+  await modal.locator('button', { hasText: /^Write Offs \(/ }).click();
 }
 
 async function collectAcrossPages(page: Page, cellSelector: string): Promise<string[]> {
@@ -618,8 +628,9 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   await firstRow.locator('button').click();
 
   const modal = page.locator('div.fixed.inset-0.z-50');
-  await expect(modal.locator('label', { hasText: 'Write Off' })).toBeVisible();
-  await modal.locator('button:has-text("Write Off")').click();
+  await openWriteOffsTab(modal);
+  await expect(modal.locator('label', { hasText: 'Write Off' }).first()).toBeVisible();
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
 
   // Pick a write-off date comfortably after today so Days in Arrears (from
   // the earliest arrear on record) comes out positive. This debtor's single
@@ -633,11 +644,11 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   expect(Number(daysText)).toBeGreaterThan(0);
   await modal.getByPlaceholder('Free text').last().fill('Debtor untraceable, exhausted all recovery options');
 
-  const submitBtn = modal.locator('button:has-text("Submit")');
+  const submitBtn = modal.getByRole('button', { name: 'Submit', exact: true });
   await expect(submitBtn).toBeEnabled();
   await submitBtn.click();
-  await expect(modal.locator('span', { hasText: 'Request for Write Off' })).toBeVisible();
-  await expect(modal.locator('button:has-text("Write Off")')).toBeHidden();
+  await expect(modal.locator('span', { hasText: 'Request for Write Off' }).first()).toBeVisible();
+  await expect(modal.getByRole('button', { name: 'Write Off', exact: true })).toBeHidden();
   await modal.locator('button:has-text("✕")').click();
 
   // CPM (read-only for Write Off) sees it but can't act on it.
@@ -645,7 +656,8 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const cpmModal = page.locator('div.fixed.inset-0.z-50');
-  await expect(cpmModal.locator('span', { hasText: 'Request for Write Off' })).toBeVisible();
+  await openWriteOffsTab(cpmModal);
+  await expect(cpmModal.locator('span', { hasText: 'Request for Write Off' }).first()).toBeVisible();
   await expect(cpmModal.locator('button:has-text("Support")')).toBeHidden();
   await cpmModal.locator('button:has-text("✕")').click();
 
@@ -654,6 +666,7 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+  await openWriteOffsTab(reviewerModal);
   await reviewerModal.locator('button:has-text("Support")').click();
   await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
   await reviewerModal.locator('button:has-text("✕")').click();
@@ -665,7 +678,8 @@ test('Write Off on a debtor goes Branch Rep submits -> Pending -> Reviewer 1 sup
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const finalModal = page.locator('div.fixed.inset-0.z-50');
-  await expect(finalModal.locator('button:has-text("Write Off")')).toBeHidden();
+  await openWriteOffsTab(finalModal);
+  await expect(finalModal.getByRole('button', { name: 'Write Off', exact: true })).toBeHidden();
   await expect(finalModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
   await expect(finalModal).toContainText('fully written off');
 });
@@ -735,13 +749,14 @@ test('Write Off Save keeps it editable as To be Written Off, visible in the new 
   await firstRow.locator('button').click();
 
   const modal = page.locator('div.fixed.inset-0.z-50');
-  await modal.locator('button:has-text("Write Off")').click();
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
   await modal.locator('input[type=date]').fill('2027-03-01');
   await modal.locator('input[type=number]').fill('2000');
   await modal.getByPlaceholder('Free text').last().fill('Saved as draft first');
   await modal.locator('button:has-text("Save"):not([disabled])').click();
 
-  await expect(modal.locator('span', { hasText: 'To be Written Off' })).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'To be Written Off' }).first()).toBeVisible();
   await expect(modal.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
   await modal.locator('button:has-text("✕")').click();
 
@@ -763,8 +778,9 @@ test('Write Off Save keeps it editable as To be Written Off, visible in the new 
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const modal2 = page.locator('div.fixed.inset-0.z-50');
+  await openWriteOffsTab(modal2);
   await modal2.locator('button:has-text("Submit")').click();
-  await expect(modal2.locator('span', { hasText: 'Request for Write Off' })).toBeVisible();
+  await expect(modal2.locator('span', { hasText: 'Request for Write Off' }).first()).toBeVisible();
   await modal2.locator('button:has-text("✕")').click();
 
   await page.getByRole('button', { name: 'To Be Written Off', exact: true }).click();
@@ -783,7 +799,8 @@ test('a Supported write-off knocks the amount off Total in Arrears, appears on t
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const modal = page.locator('div.fixed.inset-0.z-50');
-  await modal.locator('button:has-text("Write Off")').click();
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
   await modal.locator('input[type=date]').fill('2027-02-01');
   await modal.locator('input[type=number]').fill('1500');
   await modal.getByPlaceholder('Free text').last().fill('Ledger and knock-off check');
@@ -794,6 +811,7 @@ test('a Supported write-off knocks the amount off Total in Arrears, appears on t
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+  await openWriteOffsTab(reviewerModal);
   await reviewerModal.locator('button:has-text("Support")').click();
   await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
 
@@ -825,8 +843,8 @@ test('a Supported write-off knocks the amount off Total in Arrears, appears on t
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
   const repeatModal = page.locator('div.fixed.inset-0.z-50');
-  await expect(repeatModal.locator('button:has-text("Write Off")')).toBeVisible();
-  await expect(repeatModal).toContainText('Write-off history');
+  await openWriteOffsTab(repeatModal);
+  await expect(repeatModal.getByRole('button', { name: 'Write Off', exact: true })).toBeVisible();
   await expect(repeatModal).toContainText('$1,500');
   await repeatModal.locator('button:has-text("✕")').click();
 });
@@ -840,7 +858,8 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: supportedDebtor }).first().locator('button').click();
   let modal = page.locator('div.fixed.inset-0.z-50');
-  await modal.locator('button:has-text("Write Off")').click();
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
   await modal.locator('input[type=date]').fill('2027-01-01');
   await modal.locator('input[type=number]').fill('4000');
   await modal.getByPlaceholder('Free text').last().fill('CFR written off check');
@@ -851,6 +870,7 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: supportedDebtor }).first().locator('button').click();
   modal = page.locator('div.fixed.inset-0.z-50');
+  await openWriteOffsTab(modal);
   await modal.locator('button:has-text("Support")').click();
   await expect(modal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
   await modal.locator('button:has-text("✕")').click();
@@ -861,12 +881,13 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   await page.locator('table tbody tr', { hasText: toBeDebtor }).first().locator('button').click();
   modal = page.locator('div.fixed.inset-0.z-50');
-  await modal.locator('button:has-text("Write Off")').click();
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
   await modal.locator('input[type=date]').fill('2026-12-01');
   await modal.locator('input[type=number]').fill('5000');
   await modal.getByPlaceholder('Free text').last().fill('CFR to-be-written-off check');
   await modal.locator('button:has-text("Save"):not([disabled])').click();
-  await expect(modal.locator('span', { hasText: 'To be Written Off' })).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'To be Written Off' }).first()).toBeVisible();
   await modal.locator('button:has-text("✕")').click();
 
   // Open a Call for Return period.
@@ -940,7 +961,8 @@ test('List of Debtors Status column shows an in-flight write-off status alongsid
   const row = page.locator('table tbody tr', { hasText: debtorName }).first();
   await row.locator('button').click();
   const modal = page.locator('div.fixed.inset-0.z-50');
-  await modal.locator('button:has-text("Write Off")').click();
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
   await modal.locator('input[type=date]').fill('2027-01-01');
   await modal.locator('input[type=number]').fill('1000');
   await modal.getByPlaceholder('Free text').last().fill('List status check');
@@ -955,6 +977,7 @@ test('List of Debtors Status column shows an in-flight write-off status alongsid
 
   await row.locator('button').click();
   const modal2 = page.locator('div.fixed.inset-0.z-50');
+  await openWriteOffsTab(modal2);
   await modal2.locator('button:has-text("Submit")').click();
   await modal2.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
@@ -965,6 +988,7 @@ test('List of Debtors Status column shows an in-flight write-off status alongsid
   const reviewerRow = page.locator('table tbody tr', { hasText: debtorName }).first();
   await reviewerRow.locator('button').click();
   const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+  await openWriteOffsTab(reviewerModal);
   await reviewerModal.locator('button:has-text("Support")').click();
   await reviewerModal.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
@@ -986,7 +1010,8 @@ test('Top 10 Written Off Call For Return tab pulls Supported write-offs, sorted 
     await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
     await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
     const modal = page.locator('div.fixed.inset-0.z-50');
-    await modal.locator('button:has-text("Write Off")').click();
+    await openWriteOffsTab(modal);
+    await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
     await modal.locator('input[type=date]').fill('2027-01-01');
     await modal.locator('input[type=number]').fill(amount);
     await modal.getByPlaceholder('Free text').last().fill('Top 10 write off check');
@@ -997,6 +1022,7 @@ test('Top 10 Written Off Call For Return tab pulls Supported write-offs, sorted 
     await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
     await page.locator('table tbody tr', { hasText: debtorName }).first().locator('button').click();
     const reviewerModal = page.locator('div.fixed.inset-0.z-50');
+    await openWriteOffsTab(reviewerModal);
     await reviewerModal.locator('button:has-text("Support")').click();
     await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
     await reviewerModal.locator('button:has-text("✕")').click();

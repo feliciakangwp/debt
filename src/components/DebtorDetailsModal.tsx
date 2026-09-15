@@ -91,6 +91,10 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   // changeable outside that review flow.
   const canEditDetails = isBranchRep && debtor.status === 'SUPPORTED';
 
+  // --- Tabs: Details (the debtor's own fields) vs Write Offs (the write-off
+  // workflow, its history table, and the transaction ledger) ---
+  const [activeTab, setActiveTab] = useState<'details' | 'writeoffs'>('details');
+
   // --- Reason / Recovery Steps: editable once Supported. Case Reference is
   // locked outside the Request to Edit flow (see below) — once a debtor is
   // Supported it can never be changed by a direct Save. ---
@@ -277,8 +281,6 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     supportWriteOff(debtor.id, activeWriteOff.id, persona.label);
   };
 
-  const writeOffHistory = debtor.writeOffs.filter((w) => w.status === 'SUPPORTED');
-
   const ledger = buildTransactionLedgerForEntry(debtor, entryIndex);
 
   return (
@@ -294,6 +296,30 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
           </button>
         </div>
 
+        <div className="flex gap-4 border-b border-slate-200 px-5">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={`border-b-2 px-1 py-2.5 text-sm font-semibold ${
+              activeTab === 'details'
+                ? 'border-brand-navy text-brand-navy'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab('writeoffs')}
+            className={`border-b-2 px-1 py-2.5 text-sm font-semibold ${
+              activeTab === 'writeoffs'
+                ? 'border-brand-navy text-brand-navy'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Write Offs ({debtor.writeOffs.length})
+          </button>
+        </div>
+
+        {activeTab === 'details' && (
         <div className="grid grid-cols-2 gap-4 px-5 py-5">
           <div>
             <label className="mb-1 block text-xs font-semibold text-slate-500">SB/Dept</label>
@@ -502,8 +528,12 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                 ))}
             </div>
           </div>
+        </div>
+        )}
 
-          <div className="col-span-2 border-t border-slate-200 pt-3">
+        {activeTab === 'writeoffs' && (
+        <div className="grid grid-cols-2 gap-4 px-5 py-5">
+          <div className="col-span-2">
             <div className="mb-2 flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-500">Write Off</label>
               {activeWriteOff && <WriteOffStatusBadge status={activeWriteOff.status} />}
@@ -635,27 +665,46 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
               <p className="text-xs text-slate-400">No write-off has been submitted for this debtor.</p>
             )}
 
-            {writeOffHistory.length > 0 && (
-              <div className="mt-3">
-                <div className="mb-1 text-xs font-semibold text-slate-400">Write-off history</div>
-                <div className="space-y-1">
-                  {writeOffHistory.map((w) => (
-                    <div
-                      key={w.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600"
-                    >
-                      <span className="shrink-0">{w.dateOfWriteOff}</span>
-                      <span className="shrink-0 font-semibold text-emerald-700">
-                        {formatCurrency(w.writeOffAmount)}
-                      </span>
-                      <span className="truncate text-slate-500" title={w.reasonForWriteOff}>
-                        {w.reasonForWriteOff}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          </div>
+
+          <div className="col-span-2 border-t border-slate-200 pt-3">
+            <label className="mb-2 block text-xs font-semibold text-slate-500">
+              Write Off Records ({debtor.writeOffs.length})
+            </label>
+            <div className="overflow-x-auto rounded-md border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-1.5 text-left font-semibold">Status</th>
+                    <th className="px-3 py-1.5 text-right font-semibold">Write-off Amount</th>
+                    <th className="px-3 py-1.5 text-right font-semibold">Days in Arrears</th>
+                    <th className="px-3 py-1.5 text-left font-semibold">Write-off Approval Date</th>
+                    <th className="px-3 py-1.5 text-left font-semibold">Reasons for Write-Offs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {debtor.writeOffs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-3 text-center text-slate-400">
+                        No write-offs on record for this debtor.
+                      </td>
+                    </tr>
+                  ) : (
+                    [...debtor.writeOffs].reverse().map((w, idx) => (
+                      <tr key={w.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                        <td className="px-3 py-1.5">
+                          <WriteOffStatusBadge status={w.status} />
+                        </td>
+                        <td className="px-3 py-1.5 text-right">{formatCurrency(w.writeOffAmount)}</td>
+                        <td className="px-3 py-1.5 text-right">{w.daysInArrears}</td>
+                        <td className="px-3 py-1.5">{w.dateOfWriteOff}</td>
+                        <td className="px-3 py-1.5">{w.reasonForWriteOff}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="col-span-2 border-t border-slate-200 pt-3">
@@ -692,6 +741,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
             </div>
           </div>
         </div>
+        )}
 
         <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3">
           {requestingEdit ? (
@@ -730,7 +780,10 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
             ) : (
               <>
                 <button
-                  onClick={() => setShowRejectBox(true)}
+                  onClick={() => {
+                    setShowRejectBox(true);
+                    setActiveTab('details');
+                  }}
                   className="rounded-md border border-red-300 px-4 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
                 >
                   Reject
@@ -756,7 +809,10 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
               )}
               {canEditDetails && (
                 <button
-                  onClick={() => setRequestingEdit(true)}
+                  onClick={() => {
+                    setRequestingEdit(true);
+                    setActiveTab('details');
+                  }}
                   className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95"
                 >
                   Request to Edit
