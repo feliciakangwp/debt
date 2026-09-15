@@ -7,7 +7,7 @@ import { totalAR, totalInArrears } from '../types';
 import type { Debtor } from '../types';
 import { resolveDebtorBuckets } from '../utils/aging';
 import { financeReportVisibleDebtors, isFinanceTeamPersona, visibleDebtors } from '../utils/visibility';
-import { StatusBadge } from '../components/StatusBadge';
+import { EffectiveStatusBadge } from '../components/StatusBadge';
 
 export function DebtorsPage() {
   const { persona, debtors, natureList, descriptionList, simulatedToday } = useApp();
@@ -36,8 +36,10 @@ export function DebtorsPage() {
     {
       key: 'status',
       header: 'Status',
-      accessor: (d) => d.status,
-      render: (d) => <StatusBadge status={d.status} />,
+      // A debtor only ever shows one status at a time — a write-off in
+      // flight takes over from the debtor's own status until it's resolved.
+      accessor: (d) => (d.writeOffs.find((w) => w.status !== 'SUPPORTED')?.status ?? d.status),
+      render: (d) => <EffectiveStatusBadge debtor={d} />,
       sortType: 'alpha',
     },
     { key: 'branch', header: 'SB/Dept', accessor: (d) => d.branch, sortType: 'alpha' },
