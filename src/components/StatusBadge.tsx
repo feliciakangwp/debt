@@ -1,4 +1,4 @@
-import type { DebtorStatus, WriteOffStatus } from '../types';
+import type { Debtor, DebtorStatus, WriteOffStatus } from '../types';
 
 const STATUS_STYLES: Record<DebtorStatus, string> = {
   DRAFT: 'bg-slate-200 text-slate-600',
@@ -43,5 +43,23 @@ export function WriteOffStatusBadge({ status }: { status: WriteOffStatus }) {
     >
       {WRITE_OFF_LABELS[status]}
     </span>
+  );
+}
+
+/**
+ * A debtor should only ever show one status at a time: whichever action is
+ * currently outstanding. A write-off in flight (To be Written Off / Request
+ * for Write Off) takes over the badge from the debtor's own status — saving
+ * a write-off moves it from "Supported" to "To be Written Off", submitting
+ * moves it to "Request for Write Off", and once Reviewer 1 supports it,
+ * there's no more write-off in flight so it reverts to showing the debtor's
+ * own status ("Supported") again.
+ */
+export function EffectiveStatusBadge({ debtor }: { debtor: Debtor }) {
+  const activeWriteOff = debtor.writeOffs.find((w) => w.status !== 'SUPPORTED');
+  return activeWriteOff ? (
+    <WriteOffStatusBadge status={activeWriteOff.status} />
+  ) : (
+    <StatusBadge status={debtor.status} />
   );
 }

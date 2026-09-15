@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AREntriesEditor } from './AREntriesEditor';
-import { StatusBadge, WriteOffStatusBadge } from './StatusBadge';
+import { EffectiveStatusBadge, WriteOffStatusBadge } from './StatusBadge';
 import { formatCurrency } from '../utils/format';
 import {
   buildTransactionLedgerForEntry,
@@ -289,7 +289,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
         <div className="flex items-center justify-between border-b border-slate-200 bg-brand-navy px-5 py-3">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold text-white">Debtor Details</h2>
-            <StatusBadge status={debtor.status} />
+            <EffectiveStatusBadge debtor={debtor} />
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white">
             ✕
@@ -534,10 +534,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
         {activeTab === 'writeoffs' && (
         <div className="grid grid-cols-2 gap-4 px-5 py-5">
           <div className="col-span-2">
-            <div className="mb-2 flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-500">Write Off</label>
-              {activeWriteOff && <WriteOffStatusBadge status={activeWriteOff.status} />}
-            </div>
+            <label className="mb-2 block text-xs font-semibold text-slate-500">Write Off</label>
 
             {writingOff ? (
               <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">

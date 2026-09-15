@@ -952,13 +952,15 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   expect(names.some((n) => n.trim() === toBeDebtor)).toBe(true);
 });
 
-test('List of Debtors Status column shows an in-flight write-off status alongside the debtor status', async ({ page }) => {
+test('List of Debtors Status column shows only one status — a write-off in flight takes over from the debtor status', async ({ page }) => {
   await page.goto('/');
 
   await setPersona(page, 'Branch Rep PSB');
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
   const debtorName = 'Lim Wee Keng';
   const row = page.locator('table tbody tr', { hasText: debtorName }).first();
+  await expect(row.locator('td').nth(2)).toContainText('Supported');
+
   await row.locator('button').click();
   const modal = page.locator('div.fixed.inset-0.z-50');
   await openWriteOffsTab(modal);
@@ -970,10 +972,11 @@ test('List of Debtors Status column shows an in-flight write-off status alongsid
   await modal.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
 
-  // Saved (not yet submitted) shows "To be Written Off" right in the list,
-  // alongside the debtor's own "Supported" status.
-  await expect(row).toContainText('To be Written Off');
-  await expect(row).toContainText('Supported');
+  // Saved (not yet submitted): the list shows only "To be Written Off" now —
+  // not "Supported" too.
+  const statusCell = row.locator('td').nth(2);
+  await expect(statusCell).toContainText('To be Written Off');
+  await expect(statusCell).not.toContainText('Supported');
 
   await row.locator('button').click();
   const modal2 = page.locator('div.fixed.inset-0.z-50');
@@ -981,7 +984,11 @@ test('List of Debtors Status column shows an in-flight write-off status alongsid
   await modal2.locator('button:has-text("Submit")').click();
   await modal2.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
-  await expect(row).toContainText('Request for Write Off');
+
+  // Submitted: only "Request for Write Off" shows.
+  await expect(statusCell).toContainText('Request for Write Off');
+  await expect(statusCell).not.toContainText('To be Written Off');
+  await expect(statusCell).not.toContainText('Supported');
 
   await setPersona(page, 'Reviewer 1 PSB');
   await page.locator('nav ul li button', { hasText: 'List of Debtors' }).click();
@@ -993,10 +1000,11 @@ test('List of Debtors Status column shows an in-flight write-off status alongsid
   await reviewerModal.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
 
-  // Once Supported it's history, not an in-flight write-off — the list only
-  // shows the debtor's own status again.
-  await expect(reviewerRow.locator('span', { hasText: 'To be Written Off' })).toHaveCount(0);
-  await expect(reviewerRow.locator('span', { hasText: 'Request for Write Off' })).toHaveCount(0);
+  // Approved: nothing left in flight, so the debtor's own status shows again.
+  const reviewerStatusCell = reviewerRow.locator('td').nth(2);
+  await expect(reviewerStatusCell).toContainText('Supported');
+  await expect(reviewerStatusCell).not.toContainText('To be Written Off');
+  await expect(reviewerStatusCell).not.toContainText('Request for Write Off');
 });
 
 test('Top 10 Written Off Call For Return tab pulls Supported write-offs, sorted by amount, capped at 10', async ({ page }) => {
