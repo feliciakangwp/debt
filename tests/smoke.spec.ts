@@ -145,16 +145,30 @@ test.describe('no console errors and no blank pages across every persona x tab',
   }
 });
 
-test('Case Reference is the first data column on the three report-style pages', async ({ page }) => {
+test('Case Reference is the first data column on Debtors Report', async ({ page }) => {
   await page.goto('/');
   await setPersona(page, 'Finance Officer');
 
-  for (const tab of ['Debtors Report', '(Fin) Arrears Report']) {
-    await page.locator('nav ul li button', { hasText: tab }).click();
-    await page.waitForTimeout(150);
-    const firstHeader = (await page.locator('table thead th').first().textContent())?.trim();
-    expect(firstHeader?.startsWith('Case Reference'), `${tab} first column`).toBe(true);
-  }
+  await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
+  await page.waitForTimeout(150);
+  const firstHeader = (await page.locator('table thead th').first().textContent())?.trim();
+  expect(firstHeader?.startsWith('Case Reference'), 'Debtors Report first column').toBe(true);
+});
+
+test('Case Reference is the last data column on Arrears Report and (Fin) Arrears Report', async ({ page }) => {
+  await page.goto('/');
+  await setPersona(page, 'Finance Officer');
+
+  await page.locator('nav ul li button', { hasText: '(Fin) Arrears Report' }).click();
+  await page.waitForTimeout(150);
+  const finLastHeader = (await page.locator('table thead th').last().textContent())?.trim();
+  expect(finLastHeader?.startsWith('Case Reference'), '(Fin) Arrears Report last column').toBe(true);
+
+  await setPersona(page, 'Branch Rep PSB');
+  await page.locator('nav ul li button', { hasText: 'Arrears Report' }).click();
+  await page.waitForTimeout(150);
+  const lastHeader = (await page.locator('table thead th').last().textContent())?.trim();
+  expect(lastHeader?.startsWith('Case Reference'), 'Arrears Report last column').toBe(true);
 });
 
 test('Finance team sees every branch on Debtors Report, branch roles see only their own', async ({ page }) => {
