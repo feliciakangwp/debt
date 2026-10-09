@@ -11,16 +11,17 @@ export interface WriteOffRow {
 }
 
 /** Flattens a list of debtors into WriteOffRow entries whose write-off
- * status matches `targetStatus` — 'SUPPORTED' for the Write Off tab,
- * 'TO_BE_WRITTEN_OFF' for the To Be Written Off tab. Pending write-offs
- * don't get a tab of their own; they're only visible via the debtor's own
- * popup while awaiting Reviewer 1. */
+ * status matches one of `targetStatus` — 'SUPPORTED' (Written Off) for the
+ * Written Off tab, 'TO_BE_WRITTEN_OFF'/'PENDING' (To Be Written Off /
+ * Request Write Off) together for the To Be Written Off tab. A single
+ * status is accepted too, for callers that only ever need one. */
 export function buildWriteOffRows(
   debtors: Debtor[],
-  targetStatus: Exclude<WriteOffStatus, 'PENDING'>,
+  targetStatus: WriteOffStatus | WriteOffStatus[],
 ): WriteOffRow[] {
+  const targets = Array.isArray(targetStatus) ? targetStatus : [targetStatus];
   return debtors.flatMap((d) =>
-    d.writeOffs.filter((w) => w.status === targetStatus).map((w) => ({ debtor: d, writeOff: w })),
+    d.writeOffs.filter((w) => targets.includes(w.status)).map((w) => ({ debtor: d, writeOff: w })),
   );
 }
 

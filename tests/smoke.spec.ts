@@ -16,8 +16,11 @@ const CFR_TABS = [
   'Arrears', 'Top 10 Debtors', 'Arrears > 5 years', 'Loans and Advances',
   'Written Off', 'Top 10 Written Off', 'To be Written Off', 'Reports',
 ];
-const WRITE_OFF_TABS = ['Write Off', 'To Be Written Off'];
-const ORIGINAL_FINANCE_ONLY_TABS = ['(Fin) Arrears Report', ...WRITE_OFF_TABS, 'Nature of Arrears', 'Description'];
+// Debt Management's own Written Off / To Be Written Off tabs — capital "Be"
+// distinguishes them from the Call For Return section's own "To be Written
+// Off" tab (lowercase "be"), which is a separate, unrelated workflow.
+const WRITE_OFF_TABS = ['Written Off', 'To Be Written Off'];
+const FIN_WRITE_OFF_TABS = ['(FIN) Written Off', '(FIN) To Be Written Off'];
 const FIN_DEBTOR_LIST_TAB = '(FIN) List of Debt Records';
 
 // Nav order is fixed in Sidebar.tsx; each persona sees a subset of it.
@@ -28,19 +31,17 @@ function expectedTabsFor(persona: string): string[] {
   const isSuperAdminPersona = persona === 'Super Admin';
   const isFinBranchHeadOrDyHead = persona.endsWith('FIN') && persona !== 'Branch Rep FIN' && !isFinanceOfficer;
 
-  if (isSuperAdminPersona) {
+  if (isSuperAdminPersona || isFinBranchHeadOrDyHead) {
     return [
       'List of Debt Records', FIN_DEBTOR_LIST_TAB, 'Debtors Report', 'Arrears Report',
-      ...ORIGINAL_FINANCE_ONLY_TABS, ...CFR_FIN_TABS, ...CFR_TABS,
+      ...WRITE_OFF_TABS, '(Fin) Arrears Report', ...FIN_WRITE_OFF_TABS, 'Nature of Arrears', 'Description',
+      ...CFR_FIN_TABS, ...CFR_TABS,
     ];
   }
   if (isFinanceOfficer) {
-    return [FIN_DEBTOR_LIST_TAB, 'Debtors Report', ...ORIGINAL_FINANCE_ONLY_TABS, ...CFR_FIN_TABS];
-  }
-  if (isFinBranchHeadOrDyHead) {
     return [
-      'List of Debt Records', FIN_DEBTOR_LIST_TAB, 'Debtors Report', 'Arrears Report',
-      ...ORIGINAL_FINANCE_ONLY_TABS, ...CFR_FIN_TABS, ...CFR_TABS,
+      FIN_DEBTOR_LIST_TAB, 'Debtors Report', '(Fin) Arrears Report', ...FIN_WRITE_OFF_TABS,
+      'Nature of Arrears', 'Description', ...CFR_FIN_TABS,
     ];
   }
   return ['List of Debt Records', 'Debtors Report', 'Arrears Report', ...WRITE_OFF_TABS, ...CFR_TABS];
@@ -251,7 +252,7 @@ test('New Debt Record requires Reviewer 1, and Reviewer 2 only when Reviewer 1 i
   await modal.locator('button:has-text("Cancel")').click();
 });
 
-test('Debt record approval: a DY Head routes through Reviewer 2 before Supported; a Head approves directly', async ({ page }) => {
+test('Debt record approval: both a Head and a DY Head approve straight to Supported; Reviewer 2 never acts', async ({ page }) => {
   await page.goto('/');
   await setPersona(page, 'Branch Rep TIB');
   await gotoDebtRecords(page);
@@ -270,9 +271,9 @@ test('Debt record approval: a DY Head routes through Reviewer 2 before Supported
   };
 
   await createRecord('CI Direct Head Co', 'Head TIB');
-  await createRecord('CI Two Step Co', 'DY Head TIB', 'Head TIB');
+  await createRecord('CI DY Head Co', 'DY Head TIB', 'Head TIB');
 
-  for (const name of ['CI Direct Head Co', 'CI Two Step Co']) {
+  for (const name of ['CI Direct Head Co', 'CI DY Head Co']) {
     const row = await findRowAcrossPages(page, name);
     await row.locator('input[type=checkbox]').check();
   }
@@ -290,30 +291,30 @@ test('Debt record approval: a DY Head routes through Reviewer 2 before Supported
   const directRowAfter = await findRowAcrossPages(page, 'CI Direct Head Co');
   await expect(directRowAfter.locator('text=Supported')).toBeVisible();
 
-  // Head TIB is only Reviewer 2 on the two-step record, so it's not
-  // approvable by them yet (still awaiting DY Head TIB, Reviewer 1).
-  const twoStepRowForHead = await findRowAcrossPages(page, 'CI Two Step Co');
-  await expect(twoStepRowForHead.locator('input[type=checkbox]')).toHaveCount(0);
+  // Head TIB is only Reviewer 2 on the DY Head record — informational only,
+  // never part of the active approval chain — so it's not approvable by
+  // them, now or after DY Head TIB (the actual Reviewer 1) approves it.
+  const dyHeadRowForHead = await findRowAcrossPages(page, 'CI DY Head Co');
+  await expect(dyHeadRowForHead.locator('input[type=checkbox]')).toHaveCount(0);
 
-  // DY Head TIB approves it — routes to Pending Review 2, not Supported.
+  // DY Head TIB, the record's actual Reviewer 1, approves it — straight to
+  // Supported, same as a Head would, with no intermediate step for
+  // Reviewer 2 to act on.
   await setPersona(page, 'DY Head TIB');
   await gotoDebtRecords(page);
-  const twoStepRow = await findRowAcrossPages(page, 'CI Two Step Co');
-  await twoStepRow.locator('input[type=checkbox]').check();
+  const dyHeadRow = await findRowAcrossPages(page, 'CI DY Head Co');
+  await dyHeadRow.locator('input[type=checkbox]').check();
   await page.click('button:has-text("Approve")');
   await page.waitForTimeout(200);
-  const twoStepRowAfter1 = await findRowAcrossPages(page, 'CI Two Step Co');
-  await expect(twoStepRowAfter1).toContainText('Pending Review');
+  const dyHeadRowAfter = await findRowAcrossPages(page, 'CI DY Head Co');
+  await expect(dyHeadRowAfter.locator('text=Supported')).toBeVisible();
 
-  // Head TIB, as Reviewer 2, gives the final sign-off.
+  // Head TIB, still only tagged as Reviewer 2, has nothing to approve now
+  // that it's Supported either.
   await setPersona(page, 'Head TIB');
   await gotoDebtRecords(page);
-  const twoStepRowForHead2 = await findRowAcrossPages(page, 'CI Two Step Co');
-  await twoStepRowForHead2.locator('input[type=checkbox]').check();
-  await page.click('button:has-text("Approve")');
-  await page.waitForTimeout(200);
-  const twoStepRowFinal = await findRowAcrossPages(page, 'CI Two Step Co');
-  await expect(twoStepRowFinal.locator('text=Supported')).toBeVisible();
+  const dyHeadRowForHead2 = await findRowAcrossPages(page, 'CI DY Head Co');
+  await expect(dyHeadRowForHead2.locator('input[type=checkbox]')).toHaveCount(0);
 });
 
 test('List of Debt Records only shows records the viewer is tagged on as Assigned To, Reviewer 1 or Reviewer 2', async ({ page }) => {
@@ -821,7 +822,7 @@ test('Write Off on a debt record goes Branch Rep submits -> Pending -> its named
   const submitBtn = modal.getByRole('button', { name: 'Submit', exact: true });
   await expect(submitBtn).toBeEnabled();
   await submitBtn.click();
-  await expect(modal.locator('span', { hasText: 'Request for Write Off' }).first()).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'Request Write Off' }).first()).toBeVisible();
   await expect(modal.getByRole('button', { name: 'Write Off', exact: true })).toBeHidden();
   await modal.locator('button:has-text("✕")').click();
 
@@ -831,7 +832,7 @@ test('Write Off on a debt record goes Branch Rep submits -> Pending -> its named
   await gotoDebtRecords(page);
   const headModal = await openDebtorByName(page, debtorName);
   await openWriteOffsTab(headModal);
-  await expect(headModal.locator('span', { hasText: 'Request for Write Off' }).first()).toBeVisible();
+  await expect(headModal.locator('span', { hasText: 'Request Write Off' }).first()).toBeVisible();
   await expect(headModal.locator('button:has-text("Support")')).toBeHidden();
   await headModal.locator('button:has-text("✕")').click();
 
@@ -854,6 +855,41 @@ test('Write Off on a debt record goes Branch Rep submits -> Pending -> its named
   await expect(finalModal.getByRole('button', { name: 'Write Off', exact: true })).toBeHidden();
   await expect(finalModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
   await expect(finalModal).toContainText('fully written off');
+});
+
+test('Reviewer 1 can reject a Request Write Off, sending it back to To Be Written Off and still editable', async ({ page }) => {
+  await page.goto('/');
+
+  // Nurul Huda (SIB) is seeded with DY Head SIB as Reviewer 1.
+  const debtorName = 'Nurul Huda';
+
+  await setPersona(page, 'Branch Rep SIB');
+  await gotoDebtRecords(page);
+  const modal = await openDebtorByName(page, debtorName);
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
+  await modal.locator('input[type=date]').fill('2027-04-01');
+  await modal.locator('input[type=number]').fill('2200');
+  await modal.getByPlaceholder('Free text').last().fill('Reject check');
+  await modal.locator('button:has-text("Submit")').last().click();
+  await expect(modal.locator('span', { hasText: 'Request Write Off' }).first()).toBeVisible();
+  await modal.locator('button:has-text("✕")').click();
+
+  await setPersona(page, 'DY Head SIB');
+  await gotoDebtRecords(page);
+  const reviewerModal = await openDebtorByName(page, debtorName);
+  await openWriteOffsTab(reviewerModal);
+  await reviewerModal.locator('button:has-text("Reject")').click();
+  await expect(reviewerModal.locator('span', { hasText: 'To Be Written Off' }).first()).toBeVisible();
+  await reviewerModal.locator('button:has-text("✕")').click();
+
+  // Back to To Be Written Off: Branch Rep can edit and resubmit it.
+  await setPersona(page, 'Branch Rep SIB');
+  await gotoDebtRecords(page);
+  const afterRejectModal = await openDebtorByName(page, debtorName);
+  await openWriteOffsTab(afterRejectModal);
+  await expect(afterRejectModal.locator('span', { hasText: 'To Be Written Off' }).first()).toBeVisible();
+  await expect(afterRejectModal.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
 });
 
 test('Debt record popup shows the Reviewers section, already filled in, for Draft, Pending Review and Supported lines', async ({ page }) => {
@@ -940,10 +976,12 @@ test('seed debtors have a Case Reference and a Required Paid Date', async ({ pag
   expect(dueDates.every((d) => d.trim() !== '-')).toBe(true);
 });
 
-test('Write Off Save keeps it editable as To be Written Off, visible in the new Debt Management tabs', async ({ page }) => {
+test('Write Off Save keeps it editable as To Be Written Off, visible only to tagged personas on the Debt Management tab', async ({ page }) => {
   await page.goto('/');
 
-  // Chua Beng Huat (SIB) is seeded with Head SIB as Reviewer 1.
+  // Chua Beng Huat (SIB) is seeded with Head SIB as Reviewer 1 and no
+  // Reviewer 2 — so only Branch Rep SIB (Assigned To) and Head SIB
+  // (Reviewer 1) are tagged on it, not DY Head SIB.
   const debtorName = 'Chua Beng Huat';
 
   await setPersona(page, 'Branch Rep SIB');
@@ -956,36 +994,53 @@ test('Write Off Save keeps it editable as To be Written Off, visible in the new 
   await modal.getByPlaceholder('Free text').last().fill('Saved as draft first');
   await modal.locator('button:has-text("Save"):not([disabled])').click();
 
-  await expect(modal.locator('span', { hasText: 'To be Written Off' }).first()).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'To Be Written Off' }).first()).toBeVisible();
   await expect(modal.getByRole('button', { name: 'Edit', exact: true })).toBeVisible();
   await modal.locator('button:has-text("✕")').click();
 
-  // Shows up in the new "To Be Written Off" Debt Management tab (branch-wide
-  // visibility, independent of the per-record reviewer tagging), for Branch
-  // Rep, DY Head, Head and the finance team alike.
-  for (const persona of ['Branch Rep SIB', 'DY Head SIB', 'Head SIB', 'Finance Officer']) {
+  const toBeWrittenOffHeaders = [
+    'Status', 'SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description',
+    'Amount to be Written off', 'Days in Arrears', 'Reason for Write off',
+  ];
+
+  // Shows up in the new "To Be Written Off" Debt Management tab for the two
+  // personas actually tagged on the record.
+  for (const persona of ['Branch Rep SIB', 'Head SIB']) {
     await setPersona(page, persona);
     await page.getByRole('button', { name: 'To Be Written Off', exact: true }).click();
-    await expect(
-      page.locator('table thead th'),
-    ).toContainText(['SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description', 'Amount to be Written off', 'Days in Arrears', 'Reason for Write off']);
-    const names = await page.locator('table tbody tr td:nth-child(2)').allTextContents();
+    await expect(page.locator('table thead th')).toContainText(toBeWrittenOffHeaders);
+    const names = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
     expect(names.some((n) => n.trim() === debtorName), `${persona} should see ${debtorName}`).toBe(true);
   }
 
+  // DY Head SIB isn't tagged on this record (not Assigned To, Reviewer 1 or
+  // Reviewer 2), so it's not on their To Be Written Off tab.
+  await setPersona(page, 'DY Head SIB');
+  await page.getByRole('button', { name: 'To Be Written Off', exact: true }).click();
+  const namesForDyHead = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+  expect(namesForDyHead.some((n) => n.trim() === debtorName)).toBe(false);
+
+  // Finance Officer sees it on the cross-branch "(FIN) To Be Written Off"
+  // tab instead, regardless of tagging.
+  await setPersona(page, 'Finance Officer');
+  await page.getByRole('button', { name: '(FIN) To Be Written Off', exact: true }).click();
+  const namesForFinance = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+  expect(namesForFinance.some((n) => n.trim() === debtorName)).toBe(true);
+
   // Submitting from the read-only summary (without reopening the form)
-  // moves it to Pending and off the To Be Written Off tab.
+  // moves it to Request Write Off — still shown on the To Be Written Off
+  // tab, which merges both pre-approval statuses together.
   await setPersona(page, 'Branch Rep SIB');
   await gotoDebtRecords(page);
   const modal2 = await openDebtorByName(page, debtorName);
   await openWriteOffsTab(modal2);
   await modal2.locator('button:has-text("Submit")').click();
-  await expect(modal2.locator('span', { hasText: 'Request for Write Off' }).first()).toBeVisible();
+  await expect(modal2.locator('span', { hasText: 'Request Write Off' }).first()).toBeVisible();
   await modal2.locator('button:has-text("✕")').click();
 
   await page.getByRole('button', { name: 'To Be Written Off', exact: true }).click();
-  const namesAfter = await page.locator('table tbody tr td:nth-child(2)').allTextContents();
-  expect(namesAfter.some((n) => n.trim() === debtorName)).toBe(false);
+  const namesAfter = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+  expect(namesAfter.some((n) => n.trim() === debtorName)).toBe(true);
 });
 
 test('a Supported write-off knocks the amount off Total in Arrears, appears on the Write Off tab and ledger, and can repeat', async ({ page }) => {
@@ -1027,12 +1082,13 @@ test('a Supported write-off knocks the amount off Total in Arrears, appears on t
   const amountAfter = (await row.locator('td').nth(amountColIdx).innerText()).trim();
   expect(amountAfter).toBe('$13,500');
 
-  // Shows up on the "Write Off" tab now that it's Supported.
-  await page.getByRole('button', { name: 'Write Off', exact: true }).click();
+  // Shows up on the "Written Off" tab now that it's Supported (DY Head PCB
+  // is tagged on this record as Reviewer 1).
+  await page.getByRole('button', { name: 'Written Off', exact: true }).first().click();
   await expect(
     page.locator('table thead th'),
-  ).toContainText(['SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description', 'Amount of Write off', 'Days in Arrears', 'Reason for Write off']);
-  const rowNames = await page.locator('table tbody tr td:nth-child(2)').allTextContents();
+  ).toContainText(['Status', 'SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description', 'Amount of Write off', 'Days in Arrears', 'Reason for Write off']);
+  const rowNames = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
   expect(rowNames.some((n) => n.trim() === debtorName)).toBe(true);
 
   // Write-off is repeatable: with $13,500 still outstanding, Branch Rep sees
@@ -1045,6 +1101,62 @@ test('a Supported write-off knocks the amount off Total in Arrears, appears on t
   await expect(repeatModal.getByRole('button', { name: 'Write Off', exact: true })).toBeVisible();
   await expect(repeatModal).toContainText('$1,500');
   await repeatModal.locator('button:has-text("✕")').click();
+});
+
+test('Debt Management Written Off tab is scoped to tagged personas, with a cross-branch (FIN) copy for Finance', async ({ page }) => {
+  await page.goto('/');
+
+  // Devi Krishnan (PCB) — Reviewer 1 is DY Head PCB, Reviewer 2 is Head PCB
+  // (mandatory, since Reviewer 1 is a DY Head).
+  const debtorName = 'Devi Krishnan';
+
+  await setPersona(page, 'Branch Rep PCB');
+  await gotoDebtRecords(page);
+  const modal = await openDebtorByName(page, debtorName);
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
+  await modal.locator('input[type=date]').fill('2027-05-01');
+  await modal.locator('input[type=number]').fill('1200');
+  await modal.getByPlaceholder('Free text').last().fill('FIN written off visibility check');
+  await modal.locator('button:has-text("Submit")').last().click();
+  await modal.locator('button:has-text("✕")').click();
+
+  await setPersona(page, 'DY Head PCB');
+  await gotoDebtRecords(page);
+  const reviewerModal = await openDebtorByName(page, debtorName);
+  await openWriteOffsTab(reviewerModal);
+  await reviewerModal.locator('button:has-text("Support")').click();
+  await expect(reviewerModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
+  await reviewerModal.locator('button:has-text("✕")').click();
+
+  const writtenOffHeaders = [
+    'Status', 'SB/Dept', 'Name of Debtor', 'Nature of Arrears', 'Description',
+    'Amount of Write off', 'Days in Arrears', 'Reason for Write off',
+  ];
+
+  // Branch Rep PCB (Assigned To) and Head PCB (Reviewer 2, informational
+  // only but still tagged) both see it on the Written Off tab.
+  for (const persona of ['Branch Rep PCB', 'Head PCB']) {
+    await setPersona(page, persona);
+    await page.getByRole('button', { name: 'Written Off', exact: true }).first().click();
+    await expect(page.locator('table thead th')).toContainText(writtenOffHeaders);
+    const names = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+    expect(names.some((n) => n.trim() === debtorName), `${persona} should see ${debtorName}`).toBe(true);
+  }
+
+  // A DY Head of another branch isn't tagged on this record, so it isn't on
+  // their Written Off tab.
+  await setPersona(page, 'DY Head PSB');
+  await page.getByRole('button', { name: 'Written Off', exact: true }).first().click();
+  const namesForBystander = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+  expect(namesForBystander.some((n) => n.trim() === debtorName)).toBe(false);
+
+  // Finance Officer sees it on the cross-branch "(FIN) Written Off" tab
+  // regardless of tagging.
+  await setPersona(page, 'Finance Officer');
+  await page.getByRole('button', { name: '(FIN) Written Off', exact: true }).click();
+  const namesForFinance = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
+  expect(namesForFinance.some((n) => n.trim() === debtorName)).toBe(true);
 });
 
 test('Written Off and To be Written Off Call For Return tabs pull from Debt Management write-offs and go through Submit -> Approve -> Approve', async ({ page }) => {
@@ -1072,7 +1184,7 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   await expect(modal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
   await modal.locator('button:has-text("✕")').click();
 
-  // Nurul Huda (SIB) — Reviewer 1 is DY Head SIB — gets a To be Written Off
+  // Nurul Huda (SIB) — Reviewer 1 is DY Head SIB — gets a To Be Written Off
   // (saved, not yet submitted) write-off.
   const toBeDebtor = 'Nurul Huda';
   await setPersona(page, 'Branch Rep SIB');
@@ -1084,7 +1196,7 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   await modal.locator('input[type=number]').fill('5000');
   await modal.getByPlaceholder('Free text').last().fill('CFR to-be-written-off check');
   await modal.locator('button:has-text("Save"):not([disabled])').click();
-  await expect(modal.locator('span', { hasText: 'To be Written Off' }).first()).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'To Be Written Off' }).first()).toBeVisible();
   await modal.locator('button:has-text("✕")').click();
 
   // Open a Call for Return period.
@@ -1109,7 +1221,9 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   ];
 
   await setPersona(page, 'Branch Rep SIB');
-  await gotoTabExact(page, 'Written Off');
+  // nth=1: nth=0 is now Debt Management's own "Written Off" tab, which sits
+  // before the Call For Return section in the sidebar.
+  await gotoTabExact(page, 'Written Off', 1);
   await expect(page.locator('table thead th')).toContainText(writtenOffHeaders);
   let names = await page.locator('table tbody tr td:nth-child(3)').allTextContents();
   expect(names.some((n) => n.trim() === supportedDebtor)).toBe(true);
@@ -1172,10 +1286,10 @@ test('List of Debt Records Status column shows only one status — a write-off i
   await modal.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
 
-  // Saved (not yet submitted): the list shows only "To be Written Off" now —
+  // Saved (not yet submitted): the list shows only "To Be Written Off" now —
   // not "Supported" too.
   const statusCell = row.locator('td').nth(2);
-  await expect(statusCell).toContainText('To be Written Off');
+  await expect(statusCell).toContainText('To Be Written Off');
   await expect(statusCell).not.toContainText('Supported');
 
   const modal2 = await openDebtorByName(page, debtorName);
@@ -1184,9 +1298,9 @@ test('List of Debt Records Status column shows only one status — a write-off i
   await modal2.locator('button:has-text("✕")').click();
   await page.waitForTimeout(150);
 
-  // Submitted: only "Request for Write Off" shows.
-  await expect(statusCell).toContainText('Request for Write Off');
-  await expect(statusCell).not.toContainText('To be Written Off');
+  // Submitted: only "Request Write Off" shows.
+  await expect(statusCell).toContainText('Request Write Off');
+  await expect(statusCell).not.toContainText('To Be Written Off');
   await expect(statusCell).not.toContainText('Supported');
 
   await setPersona(page, 'Head PSB');
@@ -1201,8 +1315,8 @@ test('List of Debt Records Status column shows only one status — a write-off i
   // Approved: nothing left in flight, so the debtor's own status shows again.
   const reviewerStatusCell = reviewerRow.locator('td').nth(2);
   await expect(reviewerStatusCell).toContainText('Supported');
-  await expect(reviewerStatusCell).not.toContainText('To be Written Off');
-  await expect(reviewerStatusCell).not.toContainText('Request for Write Off');
+  await expect(reviewerStatusCell).not.toContainText('To Be Written Off');
+  await expect(reviewerStatusCell).not.toContainText('Request Write Off');
 });
 
 test('Top 10 Written Off Call For Return tab pulls Supported write-offs, sorted by amount, capped at 10', async ({ page }) => {

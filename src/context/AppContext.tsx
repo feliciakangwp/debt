@@ -23,7 +23,7 @@ const STORAGE_KEY = 'debt-management-module-v1';
 // adding to it. A version bump replaces every browser's saved debtor list
 // with the current DEBTORS_SEED — only do this for sample/test data
 // refreshes, since it discards anything a tester added through the UI.
-const DATA_VERSION = 6;
+const DATA_VERSION = 7;
 
 interface PersistedState {
   natureList: ReferenceItem[];
@@ -117,7 +117,6 @@ interface AppContextValue {
     logAction: string,
     actorLabel: string,
   ) => void;
-  approveDebtorReviews: (ids: string[], actorLabel: string) => void;
   deleteDebtors: (ids: string[]) => void;
   updateDebtorDetails: (
     id: string,
@@ -134,6 +133,7 @@ interface AppContextValue {
     submit: boolean,
   ) => void;
   supportWriteOff: (id: string, writeOffId: string, actorLabel: string) => void;
+  rejectWriteOff: (id: string, writeOffId: string, actorLabel: string) => void;
   callForReturnPeriods: CallForReturnPeriod[];
   addCallForReturnPeriod: (period: Omit<CallForReturnPeriod, 'id'>) => void;
   updateCallForReturnPeriod: (id: string, patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>) => void;
@@ -242,39 +242,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const idSet = new Set(ids);
     setDebtors((prev) =>
       prev.map((d) => (idSet.has(d.id) ? appendAuditLog({ ...d, status }, logAction, actorLabel) : d)),
-    );
-  };
-
-  // Routes a debt record's review step based on who its named Reviewer 1
-  // is: a DY Head's approval only clears Pending Review and hands off to
-  // Reviewer 2 (Pending Review 2) — their approval needs a Head's sign-off —
-  // while a Head's approval (whether acting as Reviewer 1 or Reviewer 2)
-  // goes straight to Supported, since nothing further is required above a
-  // Head. No-ops for any id not currently at a pending step.
-  const approveDebtorReviews = (ids: string[], actorLabel: string) => {
-    const idSet = new Set(ids);
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (!idSet.has(d.id)) return d;
-        let nextStatus: DebtorStatus;
-        let logAction: string;
-        if (d.status === 'PENDING_REVIEW') {
-          const reviewer1 = PERSONAS.find((p) => p.id === d.reviewer1Id);
-          if (reviewer1?.role === 'DY_HEAD') {
-            nextStatus = 'PENDING_REVIEW_2';
-            logAction = 'Approved by Reviewer 1 — routed to Reviewer 2';
-          } else {
-            nextStatus = 'SUPPORTED';
-            logAction = 'Approved by Reviewer 1';
-          }
-        } else if (d.status === 'PENDING_REVIEW_2') {
-          nextStatus = 'SUPPORTED';
-          logAction = 'Approved by Reviewer 2';
-        } else {
-          return d;
-        }
-        return appendAuditLog({ ...d, status: nextStatus }, logAction, actorLabel);
-      }),
     );
   };
 
@@ -408,6 +375,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  const rejectWriteOff = (id: string, writeOffId: string, actorLabel: string) => {
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (d.id !== id) return d;
+        const writeOffs = d.writeOffs.map((w) =>
+          w.id === writeOffId && w.status === 'PENDING' ? { ...w, status: 'TO_BE_WRITTEN_OFF' as const } : w,
+        );
+        return appendAuditLog({ ...d, writeOffs }, 'Write off rejected', actorLabel);
+      }),
+    );
+  };
+
   const addCallForReturnPeriod = (period: Omit<CallForReturnPeriod, 'id'>) => {
     const id = `cfr-period-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setCallForReturnPeriods((prev) => [...prev, { ...period, id }]);
@@ -491,7 +470,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addDebtor,
     updateDebtor,
     updateDebtorsStatus,
-    approveDebtorReviews,
     deleteDebtors,
     updateDebtorDetails,
     requestEdit,
@@ -499,6 +477,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     rejectEdit,
     saveWriteOff,
     supportWriteOff,
+    rejectWriteOff,
     callForReturnPeriods,
     addCallForReturnPeriod,
     updateCallForReturnPeriod,

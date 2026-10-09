@@ -14,6 +14,8 @@ export type PageKey =
   | 'arrears-fin'
   | 'write-off'
   | 'to-be-written-off'
+  | 'fin-written-off'
+  | 'fin-to-be-written-off'
   | 'cfr-fin-period'
   | 'cfr-fin-arrears'
   | 'cfr-fin-top10-debtors'
@@ -72,9 +74,11 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         { key: 'fin-debtor-list', label: '(FIN) List of Debt Records', visible: financeTeam },
         { key: 'debtors', label: 'Debtors Report', visible: operational || financeTeam },
         { key: 'arrears', label: 'Arrears Report', visible: operational },
+        { key: 'write-off', label: 'Written Off', visible: operational },
+        { key: 'to-be-written-off', label: 'To Be Written Off', visible: operational },
         { key: 'arrears-fin', label: '(Fin) Arrears Report', visible: financeTeam },
-        { key: 'write-off', label: 'Write Off', visible: operational || financeTeam },
-        { key: 'to-be-written-off', label: 'To Be Written Off', visible: operational || financeTeam },
+        { key: 'fin-written-off', label: '(FIN) Written Off', visible: financeTeam },
+        { key: 'fin-to-be-written-off', label: '(FIN) To Be Written Off', visible: financeTeam },
         { key: 'nature', label: 'Nature of Arrears', visible: financeTeam },
         { key: 'description', label: 'Description', visible: financeTeam },
       ],

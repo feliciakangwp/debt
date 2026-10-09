@@ -53,7 +53,7 @@ export interface ReferenceItem {
   natureId?: string;
 }
 
-export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'PENDING_REVIEW_2' | 'SUPPORTED' | 'EDIT_REQUESTED';
+export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'EDIT_REQUESTED';
 
 /**
  * A proposed change to an already-Supported debtor, awaiting Reviewer 1's
@@ -106,14 +106,13 @@ export interface Debtor {
    * who can see this record on List of Debt Records. */
   assignedToId: string;
   /** Persona id of the reviewer who approves this record out of Pending
-   * Review — a Head or a DY Head. A DY Head's approval only routes the
-   * record to Reviewer 2 (Pending Review 2); a Head's approval goes
-   * straight to Supported. Also the only persona who can Support a write-off
-   * on this record. */
+   * Review — a Head or a DY Head. Approval always goes straight to
+   * Supported regardless of which role it is. Also the only persona who can
+   * act (support/reject) on a write-off on this record. */
   reviewer1Id: string;
-  /** Persona id of the second reviewer — a Head — required only when
-   * Reviewer 1 is a DY Head, since a DY Head's approval needs a Head's
-   * sign-off. Gives final approval out of Pending Review 2 into Supported. */
+  /** Persona id of a second reviewer — a Head — captured when Reviewer 1 is
+   * a DY Head. Informational only for now: Reviewer 2 is not part of the
+   * active Debt Management approval chain and never needs to act. */
   reviewer2Id?: string;
   /** Legacy single-entry fields, kept for backward compatibility with entries
    * saved before multiple Total AR / Required Paid Date pairs were supported. */

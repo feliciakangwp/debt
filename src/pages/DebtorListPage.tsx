@@ -53,7 +53,6 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
     descriptionList,
     simulatedToday,
     updateDebtorsStatus,
-    approveDebtorReviews,
     deleteDebtors,
   } = useApp();
   const [showNew, setShowNew] = useState(false);
@@ -106,9 +105,9 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
 
   // Which rows the current persona can tick a checkbox for, bucketed by
   // review stage: a Draft is only actionable by its Assigned To (the
-  // creating Branch Rep); Pending Review only by the named Reviewer 1;
-  // Pending Review 2 only by the named Reviewer 2 — not just anyone holding
-  // the right role, since access is now per-record, not branch-wide.
+  // creating Branch Rep); Pending Review only by the named Reviewer 1 — not
+  // just anyone holding the right role, since access is per-record, not
+  // branch-wide. Reviewer 2 is informational only and never acts here.
   const draftEligibleIds = useMemo(() => {
     if (!canActAsBranchRep) return new Set<string>();
     return new Set(
@@ -123,9 +122,7 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
     return new Set(
       rows
         .filter(
-          (r) =>
-            (r.status === 'PENDING_REVIEW' && (isSuperAdmin(persona) || r.debtor.reviewer1Id === persona.id)) ||
-            (r.status === 'PENDING_REVIEW_2' && (isSuperAdmin(persona) || r.debtor.reviewer2Id === persona.id)),
+          (r) => r.status === 'PENDING_REVIEW' && (isSuperAdmin(persona) || r.debtor.reviewer1Id === persona.id),
         )
         .map((r) => r.debtor.id),
     );
@@ -173,7 +170,7 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
 
   const handleApprove = () => {
     if (selectedReviewIds.length === 0) return;
-    approveDebtorReviews(selectedReviewIds, persona.label);
+    updateDebtorsStatus(selectedReviewIds, 'SUPPORTED', 'Approved by Reviewer 1', persona.label);
     setSelected(new Set());
   };
 
@@ -223,7 +220,7 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
       key: 'status',
       header: 'Status',
       // A debtor only ever shows one status at a time: a write-off in
-      // flight (To be Written Off / Request for Write Off) takes over from
+      // flight (To Be Written Off / Request Write Off) takes over from
       // the debtor's own status until it's resolved, so it's visible when
       // scanning the whole list — not just inside the popup.
       accessor: (r) => (r.debtor.writeOffs.find((w) => w.status !== 'SUPPORTED')?.status ?? r.status),

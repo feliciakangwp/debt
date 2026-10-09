@@ -5,7 +5,7 @@ import type { Debtor, DebtorStatus, Persona, Role } from '../types';
  * Report, Arrears Report, CFR tabs, Write Off reports) at each stage of the
  * approval flow:
  *  - Draft: only the owning Branch Rep (not even Finance).
- *  - Pending Review / Pending Review 2: Branch Rep, DY Head, Head, Finance.
+ *  - Pending Review: Branch Rep, DY Head, Head, Finance.
  *  - Supported: Branch Rep, DY Head, Head, and Finance.
  *  - Edit Requested: same audience as Supported, since the live data is
  *    unchanged and still visible while the proposed edit awaits review.
@@ -18,7 +18,6 @@ import type { Debtor, DebtorStatus, Persona, Role } from '../types';
 const STATUS_ALLOWED_ROLES: Record<DebtorStatus, Role[]> = {
   DRAFT: ['BRANCH_REP'],
   PENDING_REVIEW: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
-  PENDING_REVIEW_2: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
   SUPPORTED: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
   EDIT_REQUESTED: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
 };

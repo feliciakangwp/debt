@@ -3,32 +3,51 @@ import { useApp } from '../context/AppContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
 import { formatCurrency } from '../utils/format';
-import { writeOffVisibleDebtors } from '../utils/visibility';
+import { visibleDebtRecords } from '../utils/visibility';
 import { buildWriteOffRows } from '../utils/writeOffRows';
 import type { WriteOffRow } from '../utils/writeOffRows';
+import { WriteOffStatusBadge } from '../components/StatusBadge';
 import type { WriteOffStatus } from '../types';
 
 interface WriteOffReportPageProps {
-  /** 'SUPPORTED' for the Write Off tab, 'TO_BE_WRITTEN_OFF' for the To Be
-   * Written Off tab — Pending write-offs don't get a tab of their own,
-   * they're only visible via the debtor's own popup while awaiting
-   * Reviewer 1. */
-  targetStatus: Exclude<WriteOffStatus, 'PENDING'>;
+  /** ['SUPPORTED'] for the Written Off tab, ['TO_BE_WRITTEN_OFF', 'PENDING']
+   * for the To Be Written Off tab (which merges To Be Written Off and
+   * Request Write Off records together). */
+  targetStatuses: WriteOffStatus[];
   title: string;
   amountColumnLabel: string;
+  /** true for the (FIN) copies: shows every matching write-off across every
+   * branch, with no per-record assignment tagging required. false (default)
+   * for the Debt Management copies: scoped to records the viewer is tagged
+   * on (Assigned To / Reviewer 1 / Reviewer 2), same as List of Debt
+   * Records. */
+  consolidated?: boolean;
 }
 
-export function WriteOffReportPage({ targetStatus, title, amountColumnLabel }: WriteOffReportPageProps) {
+export function WriteOffReportPage({
+  targetStatuses,
+  title,
+  amountColumnLabel,
+  consolidated = false,
+}: WriteOffReportPageProps) {
   const { persona, debtors, natureList, descriptionList } = useApp();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
   const rows: WriteOffRow[] = useMemo(() => {
-    return buildWriteOffRows(writeOffVisibleDebtors(persona, debtors), targetStatus);
-  }, [persona, debtors, targetStatus]);
+    const scoped = consolidated ? debtors : visibleDebtRecords(persona, debtors);
+    return buildWriteOffRows(scoped, targetStatuses);
+  }, [persona, debtors, targetStatuses, consolidated]);
 
   const columns: ColumnDef<WriteOffRow>[] = [
+    {
+      key: 'status',
+      header: 'Status',
+      accessor: (r) => r.writeOff.status,
+      render: (r) => <WriteOffStatusBadge status={r.writeOff.status} />,
+      sortable: false,
+    },
     { key: 'branch', header: 'SB/Dept', accessor: (r) => r.debtor.branch, sortType: 'alpha' },
     { key: 'name', header: 'Name of Debtor', accessor: (r) => r.debtor.name, sortType: 'alpha' },
     {

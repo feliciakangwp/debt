@@ -19,11 +19,13 @@ import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './util
 
 // Reachable by both audiences: operational roles see their own branch, the
 // finance team sees every branch (handled inside each page).
-const OPERATIONAL_OR_FINANCE_PAGES: PageKey[] = ['debtors', 'write-off', 'to-be-written-off'];
-const OPERATIONAL_ONLY_PAGES: PageKey[] = ['debtor-list', 'arrears'];
+const OPERATIONAL_OR_FINANCE_PAGES: PageKey[] = ['debtors'];
+const OPERATIONAL_ONLY_PAGES: PageKey[] = ['debtor-list', 'arrears', 'write-off', 'to-be-written-off'];
 const FINANCE_TEAM_ONLY_PAGES: PageKey[] = [
   'fin-debtor-list',
   'arrears-fin',
+  'fin-written-off',
+  'fin-to-be-written-off',
   'nature',
   'description',
   'cfr-fin-period',
@@ -93,12 +95,32 @@ function Shell() {
         {page === 'arrears' && <ArrearsSummaryPage />}
         {page === 'arrears-fin' && <ArrearsSummaryPage financeView />}
         {page === 'write-off' && (
-          <WriteOffReportPage targetStatus="SUPPORTED" title="Write Off" amountColumnLabel="Amount of Write off" />
+          <WriteOffReportPage
+            targetStatuses={['SUPPORTED']}
+            title="Written Off"
+            amountColumnLabel="Amount of Write off"
+          />
         )}
         {page === 'to-be-written-off' && (
           <WriteOffReportPage
-            targetStatus="TO_BE_WRITTEN_OFF"
+            targetStatuses={['TO_BE_WRITTEN_OFF', 'PENDING']}
             title="To Be Written Off"
+            amountColumnLabel="Amount to be Written off"
+          />
+        )}
+        {page === 'fin-written-off' && (
+          <WriteOffReportPage
+            consolidated
+            targetStatuses={['SUPPORTED']}
+            title="(FIN) Written Off"
+            amountColumnLabel="Amount of Write off"
+          />
+        )}
+        {page === 'fin-to-be-written-off' && (
+          <WriteOffReportPage
+            consolidated
+            targetStatuses={['TO_BE_WRITTEN_OFF', 'PENDING']}
+            title="(FIN) To Be Written Off"
             amountColumnLabel="Amount to be Written off"
           />
         )}

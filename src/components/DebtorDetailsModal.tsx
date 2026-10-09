@@ -81,6 +81,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     rejectEdit,
     saveWriteOff,
     supportWriteOff,
+    rejectWriteOff,
   } = useApp();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
@@ -217,13 +218,14 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     ? entriesSignature(proposal.arEntries) !== entriesSignature(currentEntries)
     : false;
 
-  // --- Write Off: Branch Rep saves (To be Written Off, still editable) or
-  // submits (Pending, locked, routed to Reviewer 1). Reviewer 1 then
-  // supports it (Supported), which knocks the amount off the debtor's
-  // arrears via resolveDebtorBuckets. Write-offs are repeatable: at most one
-  // record is ever "in flight" (not yet Supported) at a time; once that one
-  // is Supported, Branch Rep can start another if there's still a balance
-  // left on this line item. ---
+  // --- Write Off: Branch Rep saves (To Be Written Off, still editable) or
+  // submits (Request Write Off, locked, routed to Reviewer 1). Reviewer 1
+  // then supports it (Written Off), which knocks the amount off the
+  // debtor's arrears via resolveDebtorBuckets, or rejects it back to To Be
+  // Written Off. Write-offs are repeatable: at most one record is ever "in
+  // flight" (not yet Written Off) at a time; once that one is Written Off,
+  // Branch Rep can start another if there's still a balance left on this
+  // line item. ---
   const [writingOff, setWritingOff] = useState(false);
   const [writeOffDate, setWriteOffDate] = useState(simulatedToday);
   const [writeOffAmount, setWriteOffAmount] = useState('');
@@ -289,6 +291,11 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   const handleSupportWriteOff = () => {
     if (!activeWriteOff) return;
     supportWriteOff(debtor.id, activeWriteOff.id, persona.label);
+  };
+
+  const handleRejectWriteOff = () => {
+    if (!activeWriteOff) return;
+    rejectWriteOff(debtor.id, activeWriteOff.id, persona.label);
   };
 
   const ledger = buildTransactionLedgerForEntry(debtor, entryIndex);
@@ -669,7 +676,13 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                   </div>
                 )}
                 {isAssignedReviewer1 && activeWriteOff.status === 'PENDING' && (
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={handleRejectWriteOff}
+                      className="rounded-md border border-red-300 px-4 py-1.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+                    >
+                      Reject
+                    </button>
                     <button
                       onClick={handleSupportWriteOff}
                       className="rounded-md border border-emerald-300 px-4 py-1.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-50"
