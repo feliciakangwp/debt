@@ -8,8 +8,8 @@ export function nextActionFor(
   role: string,
 ): { kind: 'submit' | 'approve' } | null {
   if (status === 'DRAFT' && role === 'BRANCH_REP') return { kind: 'submit' };
-  if (status === 'PENDING_REVIEW' && role === 'REVIEWER_1') return { kind: 'approve' };
-  if (status === 'SUPPORTED' && role === 'CPM') return { kind: 'approve' };
+  if (status === 'PENDING_REVIEW' && role === 'DY_HEAD') return { kind: 'approve' };
+  if (status === 'SUPPORTED' && role === 'HEAD') return { kind: 'approve' };
   return null;
 }
 

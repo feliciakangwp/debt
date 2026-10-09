@@ -40,7 +40,7 @@ interface CfrWriteOffReportPageProps {
  * Be Written Off reports (see WriteOffReportPage / buildWriteOffRows), one
  * row per (debtor, write-off) pair since write-offs are repeatable. Gated on
  * an open Call for Return period, same Submit (Branch Rep) -> Approve
- * (Reviewer 1) -> Approve (CPM) workflow as every other CFR report tab.
+ * (DY Head) -> Approve (Head) workflow as every other CFR report tab.
  */
 export function CfrWriteOffReportPage({
   consolidated,

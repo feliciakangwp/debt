@@ -22,6 +22,7 @@ import { hasCfrAccess, hasOperationalAccess, isFinanceTeamPersona } from './util
 const OPERATIONAL_OR_FINANCE_PAGES: PageKey[] = ['debtors', 'write-off', 'to-be-written-off'];
 const OPERATIONAL_ONLY_PAGES: PageKey[] = ['debtor-list', 'arrears'];
 const FINANCE_TEAM_ONLY_PAGES: PageKey[] = [
+  'fin-debtor-list',
   'arrears-fin',
   'nature',
   'description',
@@ -87,6 +88,7 @@ function Shell() {
           />
         )}
         {page === 'debtor-list' && <DebtorListPage />}
+        {page === 'fin-debtor-list' && <DebtorListPage consolidated />}
         {page === 'debtors' && <DebtorsPage />}
         {page === 'arrears' && <ArrearsSummaryPage />}
         {page === 'arrears-fin' && <ArrearsSummaryPage financeView />}

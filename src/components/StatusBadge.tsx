@@ -3,6 +3,7 @@ import type { Debtor, DebtorStatus, WriteOffStatus } from '../types';
 const STATUS_STYLES: Record<DebtorStatus, string> = {
   DRAFT: 'bg-slate-200 text-slate-600',
   PENDING_REVIEW: 'bg-amber-100 text-amber-700',
+  PENDING_REVIEW_2: 'bg-amber-100 text-amber-700',
   SUPPORTED: 'bg-emerald-100 text-emerald-700',
   EDIT_REQUESTED: 'bg-sky-100 text-sky-700',
 };
@@ -10,6 +11,7 @@ const STATUS_STYLES: Record<DebtorStatus, string> = {
 const STATUS_LABELS: Record<DebtorStatus, string> = {
   DRAFT: 'Draft',
   PENDING_REVIEW: 'Pending Review',
+  PENDING_REVIEW_2: 'Pending Review (Reviewer 2)',
   SUPPORTED: 'Supported',
   EDIT_REQUESTED: 'Edit Requested',
 };
@@ -51,9 +53,9 @@ export function WriteOffStatusBadge({ status }: { status: WriteOffStatus }) {
  * currently outstanding. A write-off in flight (To be Written Off / Request
  * for Write Off) takes over the badge from the debtor's own status — saving
  * a write-off moves it from "Supported" to "To be Written Off", submitting
- * moves it to "Request for Write Off", and once Reviewer 1 supports it,
- * there's no more write-off in flight so it reverts to showing the debtor's
- * own status ("Supported") again.
+ * moves it to "Request for Write Off", and once its named Reviewer 1
+ * supports it, there's no more write-off in flight so it reverts to showing
+ * the debtor's own status ("Supported") again.
  */
 export function EffectiveStatusBadge({ debtor }: { debtor: Debtor }) {
   const activeWriteOff = debtor.writeOffs.find((w) => w.status !== 'SUPPORTED');

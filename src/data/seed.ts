@@ -111,12 +111,16 @@ const mkDebtor = (
   reasonNonRecovery: string,
   recoverySteps: string,
   id: string,
-  status: DebtorStatus = 'SUPPORTED',
+  status: DebtorStatus,
+  reviewer1Role: 'HEAD' | 'DY_HEAD',
 ): Debtor => {
   // Every debtor carries exactly one AR entry — one debtor list, one AR.
   const arEntries: AREntry[] = [
     { id: `${id}-entry-0`, amount, requiredPaidDate: dateForMonthsBack(monthsBack) },
   ];
+  // A DY Head's approval always needs a Head's sign-off, so Reviewer 2 is
+  // only set (and only required) when Reviewer 1 is a DY Head.
+  const reviewer2Id = reviewer1Role === 'DY_HEAD' ? `HEAD_${branch}` : undefined;
   return {
     id,
     status,
@@ -136,6 +140,9 @@ const mkDebtor = (
     recoverySteps,
     caseReference: randomCaseReference(),
     arEntries,
+    assignedToId: `BRANCH_REP_${branch}`,
+    reviewer1Id: `${reviewer1Role}_${branch}`,
+    reviewer2Id,
     writeOffs: [],
     auditLog: [{ id: `log-${id}-seed`, date: '2026-01-01', actor: 'Finance', action: 'Sample data loaded' }],
   };
@@ -147,12 +154,14 @@ const mkDebtor = (
  * 20 debtors to test every persona against: a mix of shared and distinct
  * Nature/Description combinations, spread across every aging bucket from
  * not-yet-due out to >=5 years (including several Arrears >= 5 years entries
- * per branch for Top 10 Debtors / Arrears > 5 years), and a mix of Draft/
- * Pending Review/Supported statuses so the Debtor List's branch-scoped
- * visibility rules have something to show for Branch Rep, Reviewer 1, CPM
- * and Finance alike. Each debtor carries exactly one AR amount with its own
- * Required Paid Date (one debtor list = one AR), so Days in Arrears, the
- * Write Off ledger, and live aging all have something real to compute from.
+ * per branch for Top 10 Debtors / Arrears > 5 years), a mix of Draft/Pending
+ * Review/Pending Review 2/Supported statuses, and a mix of Reviewer 1 roles
+ * (Head vs DY Head, the latter always paired with that branch's Head as
+ * Reviewer 2) so every stage of the new per-record reviewer workflow has
+ * something to show for Branch Rep, DY Head, Head and Finance alike. Each
+ * debtor carries exactly one AR amount with its own Required Paid Date (one
+ * debtor list = one AR), so Days in Arrears, the Write Off ledger, and live
+ * aging all have something real to compute from.
  */
 interface DebtorProfile {
   natureId: string;
@@ -166,7 +175,10 @@ interface DebtorProfile {
   amount: number;
   reasonNonRecovery: string;
   recoverySteps: string;
-  status?: DebtorStatus;
+  status: DebtorStatus;
+  /** Reviewer 1 is always that branch's own Head or DY Head; a DY Head is
+   * always paired with that branch's Head as the mandatory Reviewer 2. */
+  reviewer1Role: 'HEAD' | 'DY_HEAD';
 }
 
 // 20 profiles: several nature/description pairs repeat (rows 1-3, 4-5, 6-7,
@@ -182,6 +194,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 4000,
     reasonNonRecovery: 'Unable to contact',
     recoverySteps: 'Engagement',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-tax',
@@ -190,6 +204,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 45000,
     reasonNonRecovery: 'Unable to contact',
     recoverySteps: 'Engagement',
+    status: 'SUPPORTED',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-tax',
@@ -198,6 +214,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 22000,
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-tax',
@@ -206,6 +224,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 15000,
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
+    status: 'SUPPORTED',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-tax',
@@ -215,6 +235,7 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     reasonNonRecovery: 'Payment plan ongoing',
     recoverySteps: 'Monitoring',
     status: 'PENDING_REVIEW',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-tax',
@@ -223,6 +244,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 9000,
     reasonNonRecovery: 'Payment plan ongoing',
     recoverySteps: 'Monitoring',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-tax',
@@ -232,6 +255,7 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     reasonNonRecovery: 'Awaiting response',
     recoverySteps: 'Reminder letter sent',
     status: 'DRAFT',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-fees',
@@ -240,6 +264,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 2500,
     reasonNonRecovery: '',
     recoverySteps: '',
+    status: 'SUPPORTED',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-fees',
@@ -248,6 +274,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 1500,
     reasonNonRecovery: '',
     recoverySteps: '',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-fees',
@@ -256,6 +284,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 5500,
     reasonNonRecovery: '',
     recoverySteps: '',
+    status: 'PENDING_REVIEW',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-fees',
@@ -264,7 +294,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 6200,
     reasonNonRecovery: 'Disputed amount',
     recoverySteps: 'Under review',
-    status: 'PENDING_REVIEW',
+    status: 'DRAFT',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-fees',
@@ -273,7 +304,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 11000,
     reasonNonRecovery: 'Awaiting response',
     recoverySteps: 'Follow-up letter sent',
-    status: 'DRAFT',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-fees',
@@ -282,6 +314,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 9000,
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
+    status: 'SUPPORTED',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-financial-penalty',
@@ -290,6 +324,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 6500,
     reasonNonRecovery: 'Disputed amount',
     recoverySteps: 'Under review',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-financial-penalty',
@@ -298,6 +334,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 3200,
     reasonNonRecovery: '',
     recoverySteps: '',
+    status: 'SUPPORTED',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-financial-penalty',
@@ -306,6 +344,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 18000,
     reasonNonRecovery: 'No contact',
     recoverySteps: 'Law firm',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-financial-penalty',
@@ -314,6 +354,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 5000,
     reasonNonRecovery: 'Payment plan ongoing',
     recoverySteps: 'Monitoring',
+    status: 'PENDING_REVIEW_2',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-staff-related',
@@ -322,7 +364,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 9500,
     reasonNonRecovery: 'Staff resigned',
     recoverySteps: 'HR follow-up',
-    status: 'PENDING_REVIEW',
+    status: 'SUPPORTED',
+    reviewer1Role: 'DY_HEAD',
   },
   {
     natureId: 'nat-staff-related',
@@ -331,6 +374,8 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     amount: 4100,
     reasonNonRecovery: 'Staff resigned',
     recoverySteps: 'HR follow-up',
+    status: 'SUPPORTED',
+    reviewer1Role: 'HEAD',
   },
   {
     natureId: 'nat-others',
@@ -340,6 +385,7 @@ const DEBTOR_PROFILES: DebtorProfile[] = [
     reasonNonRecovery: '',
     recoverySteps: '',
     status: 'DRAFT',
+    reviewer1Role: 'DY_HEAD',
   },
 ];
 
@@ -393,7 +439,8 @@ export const DEBTORS_SEED: Debtor[] = BRANCHES.flatMap((branch) =>
       profile.reasonNonRecovery,
       profile.recoverySteps,
       `debtor-gen-${branch}-${i + 1}`,
-      profile.status ?? 'SUPPORTED',
+      profile.status,
+      profile.reviewer1Role,
     ),
   ),
 );

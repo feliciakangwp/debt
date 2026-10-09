@@ -7,7 +7,8 @@ import { DebtorDetailsModal } from '../components/DebtorDetailsModal';
 import { EffectiveStatusBadge } from '../components/StatusBadge';
 import { formatCurrency } from '../utils/format';
 import { debtorAmountRowsNetOfWriteOff } from '../utils/aging';
-import { isSuperAdmin, visibleDebtors } from '../utils/visibility';
+import { isSuperAdmin, visibleDebtRecords } from '../utils/visibility';
+import { PERSONAS } from '../types';
 import type { Debtor, DebtorStatus } from '../types';
 
 interface DebtorEntryRow {
@@ -29,9 +30,32 @@ interface DebtorEntryRow {
   caseReference: string;
 }
 
-export function DebtorListPage() {
-  const { persona, debtors, natureList, descriptionList, simulatedToday, updateDebtorsStatus, deleteDebtors } =
-    useApp();
+function personaLabel(id: string | undefined): string {
+  if (!id) return '-';
+  return PERSONAS.find((p) => p.id === id)?.label ?? id;
+}
+
+interface DebtorListPageProps {
+  /** true = "(FIN) List of Debt Records": every record across every branch,
+   * read-only — Finance Officer's (and Head FIN / DY Head FIN's double-hat)
+   * oversight copy, same convention as every other "(Fin) X" tab in the app.
+   * false = "List of Debt Records": scoped to just the records the viewer
+   * is personally tagged on (Assigned To, Reviewer 1, or Reviewer 2), with
+   * the full create/submit/review workflow. */
+  consolidated?: boolean;
+}
+
+export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
+  const {
+    persona,
+    debtors,
+    natureList,
+    descriptionList,
+    simulatedToday,
+    updateDebtorsStatus,
+    approveDebtorReviews,
+    deleteDebtors,
+  } = useApp();
   const [showNew, setShowNew] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
   const [viewingDebtorId, setViewingDebtorId] = useState<string | null>(null);
@@ -42,7 +66,10 @@ export function DebtorListPage() {
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
-  const scopedDebtors = useMemo(() => visibleDebtors(persona, debtors), [debtors, persona]);
+  const scopedDebtors = useMemo(
+    () => (consolidated ? debtors : visibleDebtRecords(persona, debtors)),
+    [debtors, persona, consolidated],
+  );
 
   const rows: DebtorEntryRow[] = useMemo(() => {
     const out: DebtorEntryRow[] = [];
@@ -68,24 +95,46 @@ export function DebtorListPage() {
     return out;
   }, [scopedDebtors, simulatedToday]);
 
-  const canActAsBranchRep = persona.role === 'BRANCH_REP' || isSuperAdmin(persona);
-  const canActAsReviewer = persona.role === 'REVIEWER_1' || isSuperAdmin(persona);
+  // The consolidated (FIN) copy is read-only oversight — same convention as
+  // every other "(Fin) X" tab in the app — even for a Head FIN/DY Head FIN
+  // double-hat, who act on their own tagged records via the regular tab.
+  const canActAsBranchRep = !consolidated && (persona.role === 'BRANCH_REP' || isSuperAdmin(persona));
+  const canActAsReviewer =
+    !consolidated && (persona.role === 'HEAD' || persona.role === 'DY_HEAD' || isSuperAdmin(persona));
   const canCreate = canActAsBranchRep;
   const canEdit = canActAsBranchRep;
 
-  // Statuses the current persona can act on via the checkbox + bulk action
-  // buttons: Branch Rep acts on their own Drafts, Reviewer 1 acts on Pending
-  // Review items, Super Admin gets both. Everyone else is read-only.
-  const actionableStatuses: DebtorStatus[] = [
-    ...(canActAsBranchRep ? (['DRAFT'] as const) : []),
-    ...(canActAsReviewer ? (['PENDING_REVIEW'] as const) : []),
-  ];
+  // Which rows the current persona can tick a checkbox for, bucketed by
+  // review stage: a Draft is only actionable by its Assigned To (the
+  // creating Branch Rep); Pending Review only by the named Reviewer 1;
+  // Pending Review 2 only by the named Reviewer 2 — not just anyone holding
+  // the right role, since access is now per-record, not branch-wide.
+  const draftEligibleIds = useMemo(() => {
+    if (!canActAsBranchRep) return new Set<string>();
+    return new Set(
+      rows
+        .filter((r) => r.status === 'DRAFT' && (isSuperAdmin(persona) || r.debtor.assignedToId === persona.id))
+        .map((r) => r.debtor.id),
+    );
+  }, [rows, canActAsBranchRep, persona]);
 
-  const eligibleIds = useMemo(() => {
-    if (actionableStatuses.length === 0) return new Set<string>();
-    return new Set(rows.filter((r) => actionableStatuses.includes(r.status)).map((r) => r.debtor.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, canActAsBranchRep, canActAsReviewer]);
+  const reviewEligibleIds = useMemo(() => {
+    if (!canActAsReviewer) return new Set<string>();
+    return new Set(
+      rows
+        .filter(
+          (r) =>
+            (r.status === 'PENDING_REVIEW' && (isSuperAdmin(persona) || r.debtor.reviewer1Id === persona.id)) ||
+            (r.status === 'PENDING_REVIEW_2' && (isSuperAdmin(persona) || r.debtor.reviewer2Id === persona.id)),
+        )
+        .map((r) => r.debtor.id),
+    );
+  }, [rows, canActAsReviewer, persona]);
+
+  const eligibleIds = useMemo(
+    () => new Set([...draftEligibleIds, ...reviewEligibleIds]),
+    [draftEligibleIds, reviewEligibleIds],
+  );
 
   const toggleRow = (debtorId: string) => {
     setSelected((prev) => {
@@ -103,47 +152,40 @@ export function DebtorListPage() {
     setSelected(allEligibleSelected ? new Set() : new Set(eligibleIds));
   };
 
-  // Bulk actions each narrow the selection to the specific status they act
-  // on, since Super Admin can have both Draft and Pending Review rows
-  // selected at once.
-  const selectedWithStatus = (status: DebtorStatus) =>
-    [...selected].filter((id) => rows.some((r) => r.debtor.id === id && r.status === status));
+  const selectedDraftIds = [...selected].filter((id) => draftEligibleIds.has(id));
+  const selectedReviewIds = [...selected].filter((id) => reviewEligibleIds.has(id));
 
   const handleSubmit = () => {
-    const ids = selectedWithStatus('DRAFT');
-    if (ids.length === 0) return;
-    updateDebtorsStatus(ids, 'PENDING_REVIEW', 'Submitted for review', persona.label);
+    if (selectedDraftIds.length === 0) return;
+    updateDebtorsStatus(selectedDraftIds, 'PENDING_REVIEW', 'Submitted for review', persona.label);
     setSelected(new Set());
   };
 
   const handleDelete = () => {
-    const ids = selectedWithStatus('DRAFT');
-    if (ids.length === 0) return;
-    const count = ids.length;
+    if (selectedDraftIds.length === 0) return;
+    const count = selectedDraftIds.length;
     if (!window.confirm(`Delete ${count} draft ${count === 1 ? 'entry' : 'entries'}? This cannot be undone.`)) {
       return;
     }
-    deleteDebtors(ids);
+    deleteDebtors(selectedDraftIds);
     setSelected(new Set());
   };
 
   const handleApprove = () => {
-    const ids = selectedWithStatus('PENDING_REVIEW');
-    if (ids.length === 0) return;
-    updateDebtorsStatus(ids, 'SUPPORTED', 'Approved', persona.label);
+    if (selectedReviewIds.length === 0) return;
+    approveDebtorReviews(selectedReviewIds, persona.label);
     setSelected(new Set());
   };
 
   const handleReject = () => {
-    const ids = selectedWithStatus('PENDING_REVIEW');
-    if (ids.length === 0) return;
-    updateDebtorsStatus(ids, 'DRAFT', 'Rejected', persona.label);
+    if (selectedReviewIds.length === 0) return;
+    updateDebtorsStatus(selectedReviewIds, 'DRAFT', 'Rejected', persona.label);
     setSelected(new Set());
   };
 
   const columns: ColumnDef<DebtorEntryRow>[] = [];
 
-  if (actionableStatuses.length > 0) {
+  if (!consolidated && (canActAsBranchRep || canActAsReviewer)) {
     columns.push({
       key: 'select',
       sortable: false,
@@ -158,7 +200,7 @@ export function DebtorListPage() {
       ),
       accessor: () => '',
       render: (r) =>
-        actionableStatuses.includes(r.status) ? (
+        eligibleIds.has(r.debtor.id) ? (
           <input
             type="checkbox"
             checked={selected.has(r.debtor.id)}
@@ -196,7 +238,7 @@ export function DebtorListPage() {
       render: (r) => (
         <button
           onClick={() => {
-            if (canEdit && (r.status === 'DRAFT' || r.status === 'PENDING_REVIEW')) {
+            if (!consolidated && canEdit && (r.status === 'DRAFT' || r.status === 'PENDING_REVIEW')) {
               setEditingDebtor(r.debtor);
             } else {
               setViewingDebtorId(r.debtor.id);
@@ -238,6 +280,24 @@ export function DebtorListPage() {
       sortType: 'alpha',
     },
     {
+      key: 'assignedTo',
+      header: 'Assigned To',
+      accessor: (r) => personaLabel(r.debtor.assignedToId),
+      sortType: 'alpha',
+    },
+    {
+      key: 'reviewer1',
+      header: 'Reviewer 1',
+      accessor: (r) => personaLabel(r.debtor.reviewer1Id),
+      sortType: 'alpha',
+    },
+    {
+      key: 'reviewer2',
+      header: 'Reviewer 2',
+      accessor: (r) => personaLabel(r.debtor.reviewer2Id),
+      sortType: 'alpha',
+    },
+    {
       key: 'reason',
       header: 'Reason for non-recovery',
       accessor: (r) => r.reasonNonRecovery,
@@ -254,20 +314,22 @@ export function DebtorListPage() {
   return (
     <div>
       <div className="mb-1 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-brand-navy">List of Debtors</h1>
+        <h1 className="text-2xl font-bold text-brand-navy">
+          {consolidated ? '(FIN) List of Debt Records' : 'List of Debt Records'}
+        </h1>
         <div className="flex items-center gap-2">
           {canActAsBranchRep && (
             <>
               <button
                 onClick={handleDelete}
-                disabled={selectedWithStatus('DRAFT').length === 0}
+                disabled={selectedDraftIds.length === 0}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Delete
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={selectedWithStatus('DRAFT').length === 0}
+                disabled={selectedDraftIds.length === 0}
                 className="rounded-md border border-brand-navy/30 px-4 py-2 text-sm font-semibold text-brand-navy hover:bg-brand-navy hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Submit
@@ -278,14 +340,14 @@ export function DebtorListPage() {
             <>
               <button
                 onClick={handleReject}
-                disabled={selectedWithStatus('PENDING_REVIEW').length === 0}
+                disabled={selectedReviewIds.length === 0}
                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Reject
               </button>
               <button
                 onClick={handleApprove}
-                disabled={selectedWithStatus('PENDING_REVIEW').length === 0}
+                disabled={selectedReviewIds.length === 0}
                 className="rounded-md border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Approve
@@ -303,7 +365,9 @@ export function DebtorListPage() {
         </div>
       </div>
       <p className="mb-5 text-sm text-slate-500">
-        {persona.branch ? `Showing records for ${persona.branch} only.` : 'Showing all branches.'}{' '}
+        {consolidated
+          ? 'Compiled across all branches.'
+          : 'Showing records you are tagged on — as Assigned To, Reviewer 1, or Reviewer 2.'}{' '}
         Click a column header to sort. Click a debtor's name to view its details.
       </p>
 

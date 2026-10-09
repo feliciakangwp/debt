@@ -21,7 +21,7 @@ import type { Branch, CfrSubmissionStatus } from '../types';
 interface CfrArrearsPageProps {
   /** true = (Fin) Call For Return: consolidated across all branches,
    * read-only. false = Call For Return: grouped per branch, visible only to
-   * each branch's own Branch Rep/Reviewer 1/CPM (plus Super Admin), with the
+   * each branch's own Branch Rep/DY Head/Head (plus Super Admin), with the
    * Submit / Approve / Reject workflow. */
   consolidated: boolean;
 }
@@ -37,8 +37,8 @@ export function CfrArrearsPage({ consolidated }: CfrArrearsPageProps) {
   const rows: AggregatedRow[] = useMemo(() => {
     if (!activePeriod) return [];
     // Consolidated (Fin) view and Super Admin see every branch's lines;
-    // otherwise Branch Rep / Reviewer 1 / CPM see only their own branch —
-    // Finance Officer, Reviewer 1 FIN and CPM FIN do not get a full
+    // otherwise Branch Rep / DY Head / Head see only their own branch —
+    // Finance Officer, DY Head FIN and Head FIN do not get a full
     // cross-branch view here (unlike Arrears Report elsewhere in the app).
     const scoped = consolidated || isSuperAdmin(persona)
       ? financeReportVisibleDebtors(persona, debtors)

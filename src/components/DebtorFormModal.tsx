@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { BRANCHES } from '../types';
+import { BRANCHES, PERSONAS } from '../types';
 import type { AREntry, Branch, Debtor } from '../types';
 import { AREntriesEditor } from './AREntriesEditor';
 import { debtorAmountRows, summarizeBuckets } from '../utils/aging';
+
+const HEAD_OPTIONS = PERSONAS.filter((p) => p.role === 'HEAD');
+const DY_HEAD_OPTIONS = PERSONAS.filter((p) => p.role === 'DY_HEAD');
+// "Drop down list of the Personas of DY Head and Head" — DY Head listed
+// first, per the spec's own ordering.
+const REVIEWER_1_OPTIONS = [...DY_HEAD_OPTIONS, ...HEAD_OPTIONS];
 
 interface DebtorFormModalProps {
   lockedBranch: Branch | null;
@@ -43,6 +49,24 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
   const [recoverySteps, setRecoverySteps] = useState(editDebtor?.recoverySteps ?? '');
   const [caseReference, setCaseReference] = useState(editDebtor?.caseReference ?? '');
 
+  // --- Reviewers: Assigned To is auto-pulled from whoever is creating/
+  // editing the record and locked, since it's never meant to be reassigned
+  // by hand. Reviewer 1 can be any Head or DY Head; Reviewer 2 is only
+  // required when Reviewer 1 is a DY Head, since their approval needs a
+  // Head's sign-off before the record is Supported. ---
+  const [assignedToId] = useState(() => editDebtor?.assignedToId ?? persona.id);
+  const assignedToLabel = PERSONAS.find((p) => p.id === assignedToId)?.label ?? assignedToId;
+  const [reviewer1Id, setReviewer1Id] = useState(editDebtor?.reviewer1Id ?? '');
+  const [reviewer2Id, setReviewer2Id] = useState(editDebtor?.reviewer2Id ?? '');
+  const reviewer1 = PERSONAS.find((p) => p.id === reviewer1Id);
+  const reviewer2Required = reviewer1?.role === 'DY_HEAD';
+
+  const handleReviewer1Change = (newReviewer1Id: string) => {
+    setReviewer1Id(newReviewer1Id);
+    const newReviewer1 = PERSONAS.find((p) => p.id === newReviewer1Id);
+    if (newReviewer1?.role !== 'DY_HEAD') setReviewer2Id('');
+  };
+
   const handleNatureChange = (newNatureId: string) => {
     setNatureId(newNatureId);
     const stillValid = descriptionsForNature(newNatureId).some((d) => d.id === descriptionId);
@@ -65,6 +89,8 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
     name.trim() !== '' &&
     natureId !== '' &&
     descriptionId !== '' &&
+    reviewer1Id !== '' &&
+    (!reviewer2Required || reviewer2Id !== '') &&
     (isEditing ||
       (arEntries.length > 0 && arEntries.every((e) => e.requiredPaidDate !== '')));
 
@@ -91,6 +117,9 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
       reasonNonRecovery,
       recoverySteps,
       caseReference,
+      assignedToId,
+      reviewer1Id,
+      reviewer2Id: reviewer2Required ? reviewer2Id : undefined,
     };
 
     if (preserveLegacyBuckets) {
@@ -248,6 +277,52 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
               onChange={(e) => setRecoverySteps(e.target.value)}
               className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
             />
+          </div>
+
+          <div className="col-span-2 border-t border-slate-200 pt-3">
+            <label className="mb-1 block text-xs font-semibold text-slate-500">Reviewers</label>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">Assigned to</label>
+            <div className="rounded-md border border-slate-200 bg-slate-100 px-2 py-1.5 text-sm text-slate-700">
+              {assignedToLabel}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-500">Reviewer 1</label>
+            <select
+              value={reviewer1Id}
+              onChange={(e) => handleReviewer1Change(e.target.value)}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">Select a reviewer</option>
+              {REVIEWER_1_OPTIONS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-span-2">
+            <label className="mb-1 block text-xs font-semibold text-slate-500">
+              Reviewer 2 {reviewer2Required ? '(required)' : '(not required — Reviewer 1 is a Head)'}
+            </label>
+            <select
+              value={reviewer2Id}
+              onChange={(e) => setReviewer2Id(e.target.value)}
+              disabled={!reviewer2Required}
+              className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm disabled:bg-slate-100"
+            >
+              <option value="">Select a reviewer</option>
+              {HEAD_OPTIONS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 

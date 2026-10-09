@@ -23,7 +23,7 @@ const STORAGE_KEY = 'debt-management-module-v1';
 // adding to it. A version bump replaces every browser's saved debtor list
 // with the current DEBTORS_SEED — only do this for sample/test data
 // refreshes, since it discards anything a tester added through the UI.
-const DATA_VERSION = 5;
+const DATA_VERSION = 6;
 
 interface PersistedState {
   natureList: ReferenceItem[];
@@ -40,7 +40,7 @@ interface PersistedState {
 // localStorage, so older saved records never carry `undefined` into code
 // that assumes a value is present (e.g. joining reasons/case references).
 // Debtors saved before the approval flow existed default to SUPPORTED so
-// they don't disappear from reports/reviewer/CPM views they were already
+// they don't disappear from reports/reviewer/Head views they were already
 // visible on.
 function normalizeDebtors(debtors: Debtor[]): Debtor[] {
   return debtors.map((d) => ({
@@ -51,6 +51,8 @@ function normalizeDebtors(debtors: Debtor[]): Debtor[] {
     caseReference: d.caseReference ?? '',
     writeOffs: d.writeOffs ?? [],
     auditLog: d.auditLog ?? [],
+    assignedToId: d.assignedToId ?? '',
+    reviewer1Id: d.reviewer1Id ?? '',
   }));
 }
 
@@ -115,6 +117,7 @@ interface AppContextValue {
     logAction: string,
     actorLabel: string,
   ) => void;
+  approveDebtorReviews: (ids: string[], actorLabel: string) => void;
   deleteDebtors: (ids: string[]) => void;
   updateDebtorDetails: (
     id: string,
@@ -239,6 +242,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const idSet = new Set(ids);
     setDebtors((prev) =>
       prev.map((d) => (idSet.has(d.id) ? appendAuditLog({ ...d, status }, logAction, actorLabel) : d)),
+    );
+  };
+
+  // Routes a debt record's review step based on who its named Reviewer 1
+  // is: a DY Head's approval only clears Pending Review and hands off to
+  // Reviewer 2 (Pending Review 2) — their approval needs a Head's sign-off —
+  // while a Head's approval (whether acting as Reviewer 1 or Reviewer 2)
+  // goes straight to Supported, since nothing further is required above a
+  // Head. No-ops for any id not currently at a pending step.
+  const approveDebtorReviews = (ids: string[], actorLabel: string) => {
+    const idSet = new Set(ids);
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (!idSet.has(d.id)) return d;
+        let nextStatus: DebtorStatus;
+        let logAction: string;
+        if (d.status === 'PENDING_REVIEW') {
+          const reviewer1 = PERSONAS.find((p) => p.id === d.reviewer1Id);
+          if (reviewer1?.role === 'DY_HEAD') {
+            nextStatus = 'PENDING_REVIEW_2';
+            logAction = 'Approved by Reviewer 1 — routed to Reviewer 2';
+          } else {
+            nextStatus = 'SUPPORTED';
+            logAction = 'Approved by Reviewer 1';
+          }
+        } else if (d.status === 'PENDING_REVIEW_2') {
+          nextStatus = 'SUPPORTED';
+          logAction = 'Approved by Reviewer 2';
+        } else {
+          return d;
+        }
+        return appendAuditLog({ ...d, status: nextStatus }, logAction, actorLabel);
+      }),
     );
   };
 
@@ -432,7 +468,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       prev.map((s) => {
         if (s.id !== id) return s;
         const nextStatus: CfrSubmissionStatus = s.status === 'PENDING_REVIEW' ? 'SUPPORTED' : 'APPROVED';
-        const logAction = nextStatus === 'SUPPORTED' ? 'Approved by Reviewer 1' : 'Approved by Reviewer 2 (CPM)';
+        const logAction = nextStatus === 'SUPPORTED' ? 'Approved by Reviewer 1' : 'Approved by Reviewer 2 (Head)';
         return appendAuditLog({ ...s, status: nextStatus }, logAction, actorLabel);
       }),
     );
@@ -455,6 +491,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addDebtor,
     updateDebtor,
     updateDebtorsStatus,
+    approveDebtorReviews,
     deleteDebtors,
     updateDebtorDetails,
     requestEdit,

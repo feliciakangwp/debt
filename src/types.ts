@@ -2,7 +2,7 @@ export type Branch = 'PSB' | 'TIB' | 'SIB' | 'PCB' | 'FIN';
 
 export const BRANCHES: Branch[] = ['PSB', 'TIB', 'SIB', 'PCB', 'FIN'];
 
-export type Role = 'BRANCH_REP' | 'CPM' | 'FINANCE' | 'REVIEWER_1' | 'SUPER_ADMIN';
+export type Role = 'BRANCH_REP' | 'HEAD' | 'DY_HEAD' | 'FINANCE' | 'SUPER_ADMIN';
 
 export interface Persona {
   id: string;
@@ -19,15 +19,15 @@ export const PERSONAS: Persona[] = [
     branch: b,
   })),
   ...BRANCHES.map((b) => ({
-    id: `CPM_${b}`,
-    label: `CPM ${b}`,
-    role: 'CPM' as Role,
+    id: `HEAD_${b}`,
+    label: `Head ${b}`,
+    role: 'HEAD' as Role,
     branch: b,
   })),
   ...BRANCHES.map((b) => ({
-    id: `REVIEWER1_${b}`,
-    label: `Reviewer 1 ${b}`,
-    role: 'REVIEWER_1' as Role,
+    id: `DY_HEAD_${b}`,
+    label: `DY Head ${b}`,
+    role: 'DY_HEAD' as Role,
     branch: b,
   })),
   {
@@ -53,7 +53,7 @@ export interface ReferenceItem {
   natureId?: string;
 }
 
-export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'EDIT_REQUESTED';
+export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'PENDING_REVIEW_2' | 'SUPPORTED' | 'EDIT_REQUESTED';
 
 /**
  * A proposed change to an already-Supported debtor, awaiting Reviewer 1's
@@ -100,6 +100,21 @@ export interface Debtor {
   reasonNonRecovery: string;
   recoverySteps: string;
   caseReference: string;
+  /** Persona id of the Branch Rep who created this record — auto-filled,
+   * never edited. Determines who can act on it while it's still a Draft,
+   * and is one of the three "tags" (alongside Reviewer 1/2) that controls
+   * who can see this record on List of Debt Records. */
+  assignedToId: string;
+  /** Persona id of the reviewer who approves this record out of Pending
+   * Review — a Head or a DY Head. A DY Head's approval only routes the
+   * record to Reviewer 2 (Pending Review 2); a Head's approval goes
+   * straight to Supported. Also the only persona who can Support a write-off
+   * on this record. */
+  reviewer1Id: string;
+  /** Persona id of the second reviewer — a Head — required only when
+   * Reviewer 1 is a DY Head, since a DY Head's approval needs a Head's
+   * sign-off. Gives final approval out of Pending Review 2 into Supported. */
+  reviewer2Id?: string;
   /** Legacy single-entry fields, kept for backward compatibility with entries
    * saved before multiple Total AR / Required Paid Date pairs were supported. */
   requiredPaidDate?: string;
@@ -175,8 +190,8 @@ export type CallForReturnStatus = 'OPEN' | 'CLOSED';
 export type CfrSubmissionStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'APPROVED';
 
 /** One branch's Call for Return arrears submission for a given period.
- * Draft -> Pending Review (Branch Rep submits) -> Supported (Reviewer 1
- * approves) -> Approved (CPM, acting as Reviewer 2, approves). A reject by
+ * Draft -> Pending Review (Branch Rep submits) -> Supported (DY Head
+ * approves) -> Approved (Head, acting as Reviewer 2, approves). A reject by
  * either reviewer sends it back to Draft. The underlying arrears figures are
  * not snapshotted here — they're the branch's live arrears data, aggregated
  * the same way as Arrears Report; this record only tracks the review status. */

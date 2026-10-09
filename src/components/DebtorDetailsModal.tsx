@@ -84,7 +84,11 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     descriptionList.filter((d) => d.active && d.natureId === nId);
 
   const isBranchRep = persona.role === 'BRANCH_REP' || isSuperAdmin(persona);
-  const isReviewer = persona.role === 'REVIEWER_1' || isSuperAdmin(persona);
+  // Both the write-off Support action and Edit Request approval route to
+  // whoever is specifically named as this record's Reviewer 1 — not just
+  // anyone holding a Head/DY Head role — matching the new per-record
+  // reviewer assignment model.
+  const isAssignedReviewer1 = persona.id === debtor.reviewer1Id || isSuperAdmin(persona);
   // Direct-edit fields and "Request to Edit" are only available once a
   // record is Supported — Draft uses the full form instead, and a record
   // that's still Pending Review or already has an edit pending shouldn't be
@@ -634,7 +638,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                     </button>
                   </div>
                 )}
-                {isReviewer && activeWriteOff.status === 'PENDING' && (
+                {isAssignedReviewer1 && activeWriteOff.status === 'PENDING' && (
                   <div className="flex justify-end">
                     <button
                       onClick={handleSupportWriteOff}
@@ -757,7 +761,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                 Submit
               </button>
             </>
-          ) : isReviewer && debtor.status === 'EDIT_REQUESTED' ? (
+          ) : isAssignedReviewer1 && debtor.status === 'EDIT_REQUESTED' ? (
             showRejectBox ? (
               <>
                 <button

@@ -8,6 +8,7 @@ export type PageKey =
   | 'nature'
   | 'description'
   | 'debtor-list'
+  | 'fin-debtor-list'
   | 'debtors'
   | 'arrears'
   | 'arrears-fin'
@@ -67,7 +68,8 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
     {
       header: 'Debt Management',
       items: [
-        { key: 'debtor-list', label: 'List of Debtors', visible: operational },
+        { key: 'debtor-list', label: 'List of Debt Records', visible: operational },
+        { key: 'fin-debtor-list', label: '(FIN) List of Debt Records', visible: financeTeam },
         { key: 'debtors', label: 'Debtors Report', visible: operational || financeTeam },
         { key: 'arrears', label: 'Arrears Report', visible: operational },
         { key: 'arrears-fin', label: '(Fin) Arrears Report', visible: financeTeam },
