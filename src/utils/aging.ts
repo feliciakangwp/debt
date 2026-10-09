@@ -80,24 +80,28 @@ export function computeAgingBucketsForEntries(entries: AREntry[], today: string)
   return sumAgingBuckets(entries.map((e) => computeAgingBuckets(e.amount, e.requiredPaidDate, today)));
 }
 
+const ARREARS_BUCKETS_OLDEST_FIRST: (keyof AgingBuckets)[] = [
+  'arrears5yPlus',
+  'arrears4to5y',
+  'arrears3to4y',
+  'arrears2to3y',
+  'arrears1to2y',
+  'arrears6to12m',
+  'arrears6m',
+];
+
 /**
- * Reduces the oldest (most overdue) non-zero buckets first by `amount`,
- * clamping each at zero — how a Supported write-off knocks the amount off
- * the debtor's arrears: the longest-outstanding debt is cleared first.
+ * Reduces non-zero buckets first by `amount`, clamping each at zero, in
+ * the given order. A write-off only ever clears actual arrears (oldest,
+ * most overdue first) — `notInArrears` is deliberately left out of its
+ * order, since you can't write off a debt that isn't even due yet. A
+ * payment can settle any of it, so its order appends `notInArrears` at
+ * the end: pay off the oldest arrears first, then whatever isn't yet due.
  */
-function knockOffOldestFirst(buckets: AgingBuckets, amount: number): AgingBuckets {
+function knockOffBuckets(buckets: AgingBuckets, amount: number, order: (keyof AgingBuckets)[]): AgingBuckets {
   const result = { ...buckets };
   let remaining = amount;
-  const oldestFirst: (keyof AgingBuckets)[] = [
-    'arrears5yPlus',
-    'arrears4to5y',
-    'arrears3to4y',
-    'arrears2to3y',
-    'arrears1to2y',
-    'arrears6to12m',
-    'arrears6m',
-  ];
-  for (const key of oldestFirst) {
+  for (const key of order) {
     if (remaining <= 0) break;
     const take = Math.min(result[key], remaining);
     result[key] -= take;
@@ -175,10 +179,11 @@ export function withinListRetentionWindow(d: Debtor, today: string): boolean {
  *  - arEntries (multiple amount + due date pairs) take priority when present.
  *  - a single legacy requiredPaidDate/totalARAmount pair is used next.
  *  - otherwise the directly-entered legacy bucket fields are returned as-is.
- * Once any of the debtor's write-offs are Supported, or any payment has
- * been made (and not reopened), the combined amount is then knocked off
- * the result (oldest arrears first) — every report/total that goes
- * through this function reflects both automatically.
+ * Once any of the debtor's write-offs are Supported, their combined
+ * amount is knocked off the oldest arrears first; any payment made (and
+ * not reopened) is knocked off next, oldest arrears first too, but a
+ * payment can go on to clear `notInArrears` as well — every report/total
+ * that goes through this function reflects both automatically.
  */
 export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
   let buckets: AgingBuckets;
@@ -198,9 +203,13 @@ export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
       arrears5yPlus: d.arrears5yPlus,
     };
   }
-  const knockedOff = totalSupportedWriteOff(d) + totalActivePayments(d);
-  if (knockedOff > 0) {
-    buckets = knockOffOldestFirst(buckets, knockedOff);
+  const writtenOff = totalSupportedWriteOff(d);
+  if (writtenOff > 0) {
+    buckets = knockOffBuckets(buckets, writtenOff, ARREARS_BUCKETS_OLDEST_FIRST);
+  }
+  const paid = totalActivePayments(d);
+  if (paid > 0) {
+    buckets = knockOffBuckets(buckets, paid, [...ARREARS_BUCKETS_OLDEST_FIRST, 'notInArrears']);
   }
   return buckets;
 }
@@ -223,32 +232,26 @@ export function debtorAmountRows(d: Debtor): { amount: number; requiredPaidDate:
 }
 
 /**
- * Same rows as debtorAmountRows, but with all Supported write-offs' and all
- * active payments' combined amount knocked off — for the List of Debtors'
- * Amount column, which otherwise kept showing the pre-knock-off figure even
- * though every aggregate report already reflects the reduction via
- * resolveDebtorBuckets. Reduces the rows actually in arrears (due on or
- * before `today`) first, earliest due date first, mirroring
- * resolveDebtorBuckets' oldest-bucket-first order since each row falls into
- * exactly one bucket. Rows not yet due are never touched, same as
- * resolveDebtorBuckets leaves notInArrears alone.
+ * Reduces `rows` by `amount`, earliest due date first, clamping each row's
+ * amount at zero — the row-based equivalent of knockOffBuckets. When
+ * `overdueOnly` is true (write-offs), only rows already due on or before
+ * `today` are touched, same as resolveDebtorBuckets leaving notInArrears
+ * alone; when false (payments), every row is eligible, due or not.
  */
-export function debtorAmountRowsNetOfWriteOff(
-  d: Debtor,
+function knockOffRows(
+  rows: { amount: number; requiredPaidDate: string }[],
+  amount: number,
   today: string,
+  overdueOnly: boolean,
 ): { amount: number; requiredPaidDate: string }[] {
-  const rows = debtorAmountRows(d);
-  const knockedOff = totalSupportedWriteOff(d) + totalActivePayments(d);
-  if (knockedOff <= 0) return rows;
-
-  const overdueOldestFirst = rows
+  const eligibleOldestFirst = rows
     .map((r, index) => ({ ...r, index }))
-    .filter((r) => r.requiredPaidDate && r.requiredPaidDate <= today)
+    .filter((r) => (overdueOnly ? r.requiredPaidDate && r.requiredPaidDate <= today : true))
     .sort((a, b) => a.requiredPaidDate.localeCompare(b.requiredPaidDate));
 
   const netAmountByIndex = new Map<number, number>();
-  let remaining = knockedOff;
-  for (const r of overdueOldestFirst) {
+  let remaining = amount;
+  for (const r of eligibleOldestFirst) {
     if (remaining <= 0) break;
     const take = Math.min(r.amount, remaining);
     netAmountByIndex.set(r.index, r.amount - take);
@@ -256,6 +259,35 @@ export function debtorAmountRowsNetOfWriteOff(
   }
 
   return rows.map((r, index) => (netAmountByIndex.has(index) ? { ...r, amount: netAmountByIndex.get(index)! } : r));
+}
+
+/**
+ * Same rows as debtorAmountRows, but with all Supported write-offs' and all
+ * active payments' combined amount knocked off — for the List of Debtors'
+ * Amount column, which otherwise kept showing the pre-knock-off figure even
+ * though every aggregate report already reflects the reduction via
+ * resolveDebtorBuckets. A write-off only reduces rows actually in arrears
+ * (due on or before `today`), earliest due date first, mirroring
+ * resolveDebtorBuckets' oldest-bucket-first order; a payment can go on to
+ * reduce a row that isn't even due yet, same as it can clear notInArrears.
+ */
+export function debtorAmountRowsNetOfWriteOff(
+  d: Debtor,
+  today: string,
+): { amount: number; requiredPaidDate: string }[] {
+  let rows = debtorAmountRows(d);
+
+  const writtenOff = totalSupportedWriteOff(d);
+  if (writtenOff > 0) {
+    rows = knockOffRows(rows, writtenOff, today, true);
+  }
+
+  const paid = totalActivePayments(d);
+  if (paid > 0) {
+    rows = knockOffRows(rows, paid, today, false);
+  }
+
+  return rows;
 }
 
 const BUCKET_LABELS: Record<keyof AgingBuckets, string> = {

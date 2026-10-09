@@ -1358,6 +1358,30 @@ test('Payments tab: a partial payment keeps Supported, a second payment that cle
   await expect(reopenModal).toContainText('Outstanding balance: $7,000');
 });
 
+test('A payment knocks the Amount column off even on a debt that is not yet due', async ({ page }) => {
+  await page.goto('/');
+
+  // Lim Wee Keng (PSB) is seeded Supported with a $4,000 AR entry due in the
+  // future (not yet in arrears) — unlike a write-off, a payment should
+  // still knock the amount down regardless of due date.
+  const debtorName = 'Lim Wee Keng';
+
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoDebtRecords(page);
+  const row = page.locator('table tbody tr', { hasText: debtorName }).first();
+  await expect(row.locator('td').nth(7)).toHaveText('$4,000');
+
+  const modal = await openDebtorByName(page, debtorName);
+  await modal.locator('button', { hasText: /^Payments \(/ }).click();
+  await modal.locator('input[type=date]').fill('2027-01-01');
+  await modal.locator('input[type=number]').fill('1000');
+  await modal.getByRole('button', { name: 'Submit', exact: true }).click();
+  await expect(modal).toContainText('Outstanding balance: $3,000');
+  await modal.locator('button:has-text("✕")').click();
+
+  await expect(row.locator('td').nth(7)).toHaveText('$3,000');
+});
+
 test('List of Debt Records bulk Paid action sums ticked lines, confirms, and knocks Total Arrears to $0', async ({ page }) => {
   await page.goto('/');
 
