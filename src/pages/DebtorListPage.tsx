@@ -280,6 +280,18 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
       sortType: 'alpha',
     },
     {
+      key: 'reason',
+      header: 'Reason for non-recovery',
+      accessor: (r) => r.reasonNonRecovery,
+      sortType: 'alpha',
+    },
+    {
+      key: 'steps',
+      header: 'Recovery steps taken',
+      accessor: (r) => r.recoverySteps,
+      sortType: 'alpha',
+    },
+    {
       key: 'assignedTo',
       header: 'Assigned To',
       accessor: (r) => personaLabel(r.debtor.assignedToId),
@@ -295,18 +307,6 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
       key: 'reviewer2',
       header: 'Reviewer 2',
       accessor: (r) => personaLabel(r.debtor.reviewer2Id),
-      sortType: 'alpha',
-    },
-    {
-      key: 'reason',
-      header: 'Reason for non-recovery',
-      accessor: (r) => r.reasonNonRecovery,
-      sortType: 'alpha',
-    },
-    {
-      key: 'steps',
-      header: 'Recovery steps taken',
-      accessor: (r) => r.recoverySteps,
       sortType: 'alpha',
     },
   );

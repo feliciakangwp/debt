@@ -856,6 +856,38 @@ test('Write Off on a debt record goes Branch Rep submits -> Pending -> its named
   await expect(finalModal).toContainText('fully written off');
 });
 
+test('Debt record popup shows the Reviewers section, already filled in, for Draft, Pending Review and Supported lines', async ({ page }) => {
+  await page.goto('/');
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoDebtRecords(page);
+
+  // Draft: Koh Teck Whye — Reviewer 1 = DY Head PSB, Reviewer 2 = Head PSB.
+  const draftRow = page.locator('table tbody tr', { hasText: 'Koh Teck Whye' }).first();
+  await draftRow.locator('button').click();
+  const draftModal = page.locator('div.fixed.inset-0.z-50');
+  await expect(draftModal.locator('label', { hasText: 'Reviewers' })).toBeVisible();
+  const draftSelects = draftModal.locator('select');
+  await expect(draftSelects.nth(3)).toHaveValue('DY_HEAD_PSB');
+  await expect(draftSelects.nth(4)).toHaveValue('HEAD_PSB');
+  await draftModal.locator('button:has-text("Cancel")').click();
+
+  // Pending Review: Ravi Chandran — Reviewer 1 = Head PSB, no Reviewer 2.
+  const pendingRow = page.locator('table tbody tr', { hasText: 'Ravi Chandran' }).first();
+  await pendingRow.locator('button').click();
+  const pendingModal = page.locator('div.fixed.inset-0.z-50');
+  const pendingSelects = pendingModal.locator('select');
+  await expect(pendingSelects.nth(3)).toHaveValue('HEAD_PSB');
+  await pendingModal.locator('button:has-text("Cancel")').click();
+
+  // Supported: Lim Wee Keng — Reviewer 1 = Head PSB — now shown read-only
+  // in the Debtor Details popup (not just the edit form).
+  const supportedModal = await openDebtorByName(page, 'Lim Wee Keng');
+  await expect(supportedModal.locator('label', { hasText: 'Reviewers' })).toBeVisible();
+  await expect(supportedModal).toContainText('Branch Rep PSB');
+  await expect(supportedModal).toContainText('Head PSB');
+  await supportedModal.locator('button:has-text("✕")').click();
+});
+
 test('Case Reference is locked once Supported — only Request to Edit (approved by the record\'s Reviewer 1) can change it', async ({ page }) => {
   await page.goto('/');
 

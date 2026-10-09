@@ -12,6 +12,7 @@ import {
   totalSupportedWriteOff,
 } from '../utils/aging';
 import { isSuperAdmin } from '../utils/visibility';
+import { PERSONAS } from '../types';
 import type { AREntry, Debtor, TransactionType } from '../types';
 
 const TRANSACTION_LABELS: Record<TransactionType, string> = {
@@ -19,6 +20,11 @@ const TRANSACTION_LABELS: Record<TransactionType, string> = {
   WRITE_OFF: 'Write Off',
   PAID: 'Paid',
 };
+
+function personaLabel(id: string | undefined): string {
+  if (!id) return '-';
+  return PERSONAS.find((p) => p.id === id)?.label ?? id;
+}
 
 interface DebtorDetailsModalProps {
   debtor: Debtor;
@@ -499,6 +505,30 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
               disabled={!canEditDetails}
               className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none disabled:bg-slate-100"
             />
+          </div>
+
+          <div className="col-span-2 border-t border-slate-200 pt-3">
+            <label className="mb-1 block text-xs font-semibold text-slate-500">Reviewers</label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="mb-1 text-xs font-semibold text-slate-400">Assigned to</div>
+                <div className="rounded-md border border-slate-200 px-2 py-1.5 text-sm text-slate-700">
+                  {personaLabel(debtor.assignedToId)}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1 text-xs font-semibold text-slate-400">Reviewer 1</div>
+                <div className="rounded-md border border-slate-200 px-2 py-1.5 text-sm text-slate-700">
+                  {personaLabel(debtor.reviewer1Id)}
+                </div>
+              </div>
+              <div className="col-span-2">
+                <div className="mb-1 text-xs font-semibold text-slate-400">Reviewer 2</div>
+                <div className="rounded-md border border-slate-200 px-2 py-1.5 text-sm text-slate-700">
+                  {personaLabel(debtor.reviewer2Id)}
+                </div>
+              </div>
+            </div>
           </div>
 
           {showRejectBox && (
