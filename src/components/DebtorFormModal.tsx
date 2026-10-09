@@ -147,6 +147,7 @@ export function DebtorFormModal({ lockedBranch, onClose, editDebtor }: DebtorFor
           ...dynamicFields,
           status: 'DRAFT',
           writeOffs: [],
+          payments: [],
           auditLog: [
             {
               id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,

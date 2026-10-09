@@ -9,6 +9,9 @@ import type { Debtor, DebtorStatus, Persona, Role } from '../types';
  *  - Supported: Branch Rep, DY Head, Head, and Finance.
  *  - Edit Requested: same audience as Supported, since the live data is
  *    unchanged and still visible while the proposed edit awaits review.
+ *  - Paid: same audience as Supported — fully paid off, but reports keep
+ *    showing it indefinitely (unlike List of Debt Records' own 1-year
+ *    retention window, see withinListRetentionWindow).
  * Branch scoping still applies on top of this for every role except
  * Finance. This is deliberately broader than List of Debt Records' own
  * per-record assignment scoping (see canSeeDebtRecord/visibleDebtRecords
@@ -20,6 +23,7 @@ const STATUS_ALLOWED_ROLES: Record<DebtorStatus, Role[]> = {
   PENDING_REVIEW: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
   SUPPORTED: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
   EDIT_REQUESTED: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
+  PAID: ['BRANCH_REP', 'DY_HEAD', 'HEAD', 'FINANCE'],
 };
 
 /** Super Admin sees and can act on everything, everywhere, with no

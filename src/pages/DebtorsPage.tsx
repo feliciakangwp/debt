@@ -28,12 +28,6 @@ export function DebtorsPage() {
 
   const columns: ColumnDef<Debtor>[] = [
     {
-      key: 'caseReference',
-      header: 'Case Reference',
-      accessor: (d) => d.caseReference,
-      sortType: 'alpha',
-    },
-    {
       key: 'status',
       header: 'Status',
       // A debtor only ever shows one status at a time — a write-off in
@@ -54,6 +48,12 @@ export function DebtorsPage() {
       key: 'description',
       header: 'Description',
       accessor: (d) => descName(d.descriptionId),
+      sortType: 'alpha',
+    },
+    {
+      key: 'caseReference',
+      header: 'Case Reference',
+      accessor: (d) => d.caseReference,
       sortType: 'alpha',
     },
     {

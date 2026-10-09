@@ -5,6 +5,7 @@ const STATUS_STYLES: Record<DebtorStatus, string> = {
   PENDING_REVIEW: 'bg-amber-100 text-amber-700',
   SUPPORTED: 'bg-emerald-100 text-emerald-700',
   EDIT_REQUESTED: 'bg-sky-100 text-sky-700',
+  PAID: 'bg-indigo-100 text-indigo-700',
 };
 
 const STATUS_LABELS: Record<DebtorStatus, string> = {
@@ -12,6 +13,7 @@ const STATUS_LABELS: Record<DebtorStatus, string> = {
   PENDING_REVIEW: 'Pending Review',
   SUPPORTED: 'Supported',
   EDIT_REQUESTED: 'Edit Requested',
+  PAID: 'Paid',
 };
 
 export function StatusBadge({ status }: { status: DebtorStatus }) {

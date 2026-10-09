@@ -7,8 +7,10 @@ import {
   buildTransactionLedgerForEntry,
   daysBetween,
   debtorAmountRows,
+  debtorRemainingBalance,
   firstArrearDate,
   summarizeBuckets,
+  totalActivePayments,
   totalSupportedWriteOff,
 } from '../utils/aging';
 import { isSuperAdmin } from '../utils/visibility';
@@ -82,6 +84,8 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     saveWriteOff,
     supportWriteOff,
     rejectWriteOff,
+    recordPayment,
+    reopenPayment,
   } = useApp();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
@@ -102,9 +106,10 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   // changeable outside that review flow.
   const canEditDetails = isBranchRep && debtor.status === 'SUPPORTED';
 
-  // --- Tabs: Details (the debtor's own fields) vs Write Offs (the write-off
-  // workflow, its history table, and the transaction ledger) ---
-  const [activeTab, setActiveTab] = useState<'details' | 'writeoffs'>('details');
+  // --- Tabs: Details (the debtor's own fields), Write Offs (the write-off
+  // workflow, its history table, and the transaction ledger), and Payments
+  // (the manual payment entry form and its history table) ---
+  const [activeTab, setActiveTab] = useState<'details' | 'writeoffs' | 'payments'>('details');
 
   // --- Reason / Recovery Steps: editable once Supported. Case Reference is
   // locked outside the Request to Edit flow (see below) — once a debtor is
@@ -233,8 +238,9 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
 
   const activeWriteOff = debtor.writeOffs.find((w) => w.status !== 'SUPPORTED');
   const supportedWriteOffTotal = totalSupportedWriteOff(debtor);
+  const totalPaidSoFar = totalActivePayments(debtor);
   const entryGrossAmount = currentEntries[entryIndex]?.amount ?? 0;
-  const remainingBalance = entryGrossAmount - supportedWriteOffTotal;
+  const entryRemainingBalance = entryGrossAmount - supportedWriteOffTotal - totalPaidSoFar;
 
   const arrearStart = firstArrearDate(debtor, simulatedToday);
   const daysInArrears = arrearStart ? daysBetween(arrearStart, writeOffDate) : null;
@@ -242,7 +248,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     writeOffDate !== '' &&
     writeOffAmount.trim() !== '' &&
     Number(writeOffAmount) > 0 &&
-    Number(writeOffAmount) <= remainingBalance &&
+    Number(writeOffAmount) <= entryRemainingBalance &&
     writeOffReason.trim() !== '' &&
     daysInArrears !== null &&
     daysInArrears >= 0;
@@ -298,6 +304,40 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     rejectWriteOff(debtor.id, activeWriteOff.id, persona.label);
   };
 
+  // --- Payments: an alternate, manual way to record what the bulk "Paid"
+  // button on List of Debt Records does one line at a time — full or
+  // partial, no review step, knocking straight off the debtor's remaining
+  // balance (across every write-off and prior payment). The field stays
+  // available for another payment unless the balance is already $0.
+  // Reopening a payment voids it instead of deleting it, so the audit log
+  // and the history table both keep a record of it. ---
+  const [paymentDate, setPaymentDate] = useState(simulatedToday);
+  const [paymentAmount, setPaymentAmount] = useState('');
+
+  const debtorRemaining = debtorRemainingBalance(debtor);
+
+  const canSubmitPayment =
+    paymentDate !== '' &&
+    paymentAmount.trim() !== '' &&
+    Number(paymentAmount) > 0 &&
+    Number(paymentAmount) <= debtorRemaining;
+
+  const handleCancelPayment = () => {
+    setPaymentDate(simulatedToday);
+    setPaymentAmount('');
+  };
+
+  const handleSubmitPayment = () => {
+    if (!canSubmitPayment) return;
+    recordPayment(debtor.id, Number(paymentAmount), paymentDate, persona.label);
+    setPaymentDate(simulatedToday);
+    setPaymentAmount('');
+  };
+
+  const handleReopenPayment = (paymentId: string) => {
+    reopenPayment(debtor.id, paymentId, persona.label);
+  };
+
   const ledger = buildTransactionLedgerForEntry(debtor, entryIndex);
 
   return (
@@ -333,6 +373,16 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
             }`}
           >
             Write Offs ({debtor.writeOffs.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('payments')}
+            className={`border-b-2 px-1 py-2.5 text-sm font-semibold ${
+              activeTab === 'payments'
+                ? 'border-brand-navy text-brand-navy'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Payments ({debtor.payments.length})
           </button>
         </div>
 
@@ -693,8 +743,14 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                 )}
               </div>
             ) : isBranchRep ? (
-              remainingBalance <= 0 && supportedWriteOffTotal > 0 ? (
-                <p className="text-xs text-slate-400">This line has been fully written off.</p>
+              entryRemainingBalance <= 0 && (supportedWriteOffTotal > 0 || totalPaidSoFar > 0) ? (
+                <p className="text-xs text-slate-400">
+                  {totalPaidSoFar > 0 && supportedWriteOffTotal > 0
+                    ? 'This line has been fully written off and paid off.'
+                    : totalPaidSoFar > 0
+                      ? 'This line has been fully paid off.'
+                      : 'This line has been fully written off.'}
+                </p>
               ) : arrearStart ? (
                 <button
                   onClick={handleStartWriteOff}
@@ -777,6 +833,110 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
                         <td className="px-3 py-1.5">{TRANSACTION_LABELS[row.type]}</td>
                         <td className="px-3 py-1.5 text-right">{formatCurrency(row.amount)}</td>
                         <td className="px-3 py-1.5 text-right font-semibold">{formatCurrency(row.balance)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        )}
+
+        {activeTab === 'payments' && (
+        <div className="grid grid-cols-2 gap-4 px-5 py-5">
+          <div className="col-span-2">
+            <label className="mb-2 block text-xs font-semibold text-slate-500">Record Payment</label>
+
+            {isBranchRep ? (
+              debtorRemaining > 0 ? (
+                <div className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Payment Date</label>
+                      <input
+                        type="date"
+                        value={paymentDate}
+                        onChange={(e) => setPaymentDate(e.target.value)}
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Payment Amount</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        placeholder="0"
+                        className="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-brand-navy focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Outstanding balance: {formatCurrency(debtorRemaining)}. Payment can be in full or partial.
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={handleCancelPayment}
+                      className="rounded-md border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleSubmitPayment}
+                      disabled={!canSubmitPayment}
+                      className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">This debtor has been fully paid off.</p>
+              )
+            ) : (
+              <p className="text-xs text-slate-400">No payments have been recorded for this debtor.</p>
+            )}
+          </div>
+
+          <div className="col-span-2 border-t border-slate-200 pt-3">
+            <label className="mb-2 block text-xs font-semibold text-slate-500">
+              Payment Records ({debtor.payments.length})
+            </label>
+            <div className="overflow-x-auto rounded-md border border-slate-200">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-1.5 text-left font-semibold">Date</th>
+                    <th className="px-3 py-1.5 text-right font-semibold">Payment Amount</th>
+                    <th className="px-3 py-1.5 text-left font-semibold">Status</th>
+                    <th className="px-3 py-1.5"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {debtor.payments.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-3 text-center text-slate-400">
+                        No payments on record for this debtor.
+                      </td>
+                    </tr>
+                  ) : (
+                    [...debtor.payments].reverse().map((p, idx) => (
+                      <tr key={p.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                        <td className="px-3 py-1.5">{p.date}</td>
+                        <td className="px-3 py-1.5 text-right">{formatCurrency(p.amount)}</td>
+                        <td className="px-3 py-1.5">{p.voided ? 'Voided' : 'Active'}</td>
+                        <td className="px-3 py-1.5 text-right">
+                          {!p.voided && isBranchRep && (
+                            <button
+                              onClick={() => handleReopenPayment(p.id)}
+                              className="rounded-md border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
+                            >
+                              Reopen
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))
                   )}

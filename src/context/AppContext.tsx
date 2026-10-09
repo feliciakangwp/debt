@@ -8,13 +8,15 @@ import type {
   Debtor,
   DebtorEditProposal,
   DebtorStatus,
+  PaymentRecord,
   Persona,
   ReferenceItem,
   WriteOffRecord,
 } from '../types';
 import { BRANCHES, PERSONAS } from '../types';
 import { DEBTORS_SEED, DESCRIPTION_SEED, NATURE_SEED } from '../data/seed';
-import { todayIso } from '../utils/aging';
+import { debtorRemainingBalance, todayIso } from '../utils/aging';
+import { formatCurrency } from '../utils/format';
 
 const STORAGE_KEY = 'debt-management-module-v1';
 
@@ -50,6 +52,7 @@ function normalizeDebtors(debtors: Debtor[]): Debtor[] {
     recoverySteps: d.recoverySteps ?? '',
     caseReference: d.caseReference ?? '',
     writeOffs: d.writeOffs ?? [],
+    payments: d.payments ?? [],
     auditLog: d.auditLog ?? [],
     assignedToId: d.assignedToId ?? '',
     reviewer1Id: d.reviewer1Id ?? '',
@@ -134,6 +137,9 @@ interface AppContextValue {
   ) => void;
   supportWriteOff: (id: string, writeOffId: string, actorLabel: string) => void;
   rejectWriteOff: (id: string, writeOffId: string, actorLabel: string) => void;
+  recordPayment: (id: string, amount: number, date: string, actorLabel: string) => void;
+  markDebtorsPaid: (ids: string[], date: string, actorLabel: string) => void;
+  reopenPayment: (id: string, paymentId: string, actorLabel: string) => void;
   callForReturnPeriods: CallForReturnPeriod[];
   addCallForReturnPeriod: (period: Omit<CallForReturnPeriod, 'id'>) => void;
   updateCallForReturnPeriod: (id: string, patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>) => void;
@@ -387,6 +393,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  // Payments take effect immediately (no review step). Recording one can
+  // bring the debtor's remaining balance to zero, in which case it becomes
+  // Paid; a partial payment leaves the status as-is.
+  const recordPayment = (id: string, amount: number, date: string, actorLabel: string) => {
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (d.id !== id) return d;
+        const payment: PaymentRecord = {
+          id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          date,
+          amount,
+          voided: false,
+        };
+        const payments = [...d.payments, payment];
+        const status = debtorRemainingBalance({ ...d, payments }) <= 0 ? 'PAID' : d.status;
+        return appendAuditLog({ ...d, payments, status }, `Payment recorded: ${formatCurrency(amount)}`, actorLabel);
+      }),
+    );
+  };
+
+  // Marks a batch of Supported debt records as fully Paid in one go — the
+  // List of Debt Records' bulk "Paid" action. Each ticked record's full
+  // remaining balance becomes a single payment dated `date` (the Confirm
+  // date), skipping any record that's somehow already settled.
+  const markDebtorsPaid = (ids: string[], date: string, actorLabel: string) => {
+    const idSet = new Set(ids);
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (!idSet.has(d.id)) return d;
+        const amount = debtorRemainingBalance(d);
+        if (amount <= 0) return d;
+        const payment: PaymentRecord = {
+          id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${d.id}`,
+          date,
+          amount,
+          voided: false,
+        };
+        return appendAuditLog(
+          { ...d, payments: [...d.payments, payment], status: 'PAID' },
+          `Marked as Paid: ${formatCurrency(amount)}`,
+          actorLabel,
+        );
+      }),
+    );
+  };
+
+  // Reopening undoes a mistaken payment: it's voided (not removed, so the
+  // audit trail stays intact) and its amount no longer counts toward the
+  // debtor's balance, reverting the status back to Supported if that
+  // payment was the one that had completed it.
+  const reopenPayment = (id: string, paymentId: string, actorLabel: string) => {
+    setDebtors((prev) =>
+      prev.map((d) => {
+        if (d.id !== id) return d;
+        const payments = d.payments.map((p) => (p.id === paymentId ? { ...p, voided: true } : p));
+        const status = d.status === 'PAID' && debtorRemainingBalance({ ...d, payments }) > 0 ? 'SUPPORTED' : d.status;
+        return appendAuditLog({ ...d, payments, status }, 'Payment reopened (voided)', actorLabel);
+      }),
+    );
+  };
+
   const addCallForReturnPeriod = (period: Omit<CallForReturnPeriod, 'id'>) => {
     const id = `cfr-period-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setCallForReturnPeriods((prev) => [...prev, { ...period, id }]);
@@ -478,6 +545,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveWriteOff,
     supportWriteOff,
     rejectWriteOff,
+    recordPayment,
+    markDebtorsPaid,
+    reopenPayment,
     callForReturnPeriods,
     addCallForReturnPeriod,
     updateCallForReturnPeriod,

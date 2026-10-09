@@ -116,15 +116,69 @@ export function totalSupportedWriteOff(d: Debtor): number {
 }
 
 /**
+ * Sum of every payment on this debtor that hasn't been reopened — payments
+ * take effect immediately (no review step), unlike write-offs, so there's
+ * no separate "in flight" status to exclude here.
+ */
+export function totalActivePayments(d: Debtor): number {
+  return d.payments.filter((p) => !p.voided).reduce((sum, p) => sum + p.amount, 0);
+}
+
+/** Gross AR across every line item, ignoring write-offs and payments. */
+export function debtorGrossAR(d: Debtor): number {
+  return debtorAmountRows(d).reduce((sum, r) => sum + r.amount, 0);
+}
+
+/**
+ * What's still actually owed on this debtor as a whole, after knocking off
+ * every Supported write-off and every active (not reopened) payment.
+ * Drives the Payments tab's validation and when a debtor becomes Paid.
+ */
+export function debtorRemainingBalance(d: Debtor): number {
+  return Math.max(0, debtorGrossAR(d) - totalSupportedWriteOff(d) - totalActivePayments(d));
+}
+
+/**
+ * The date this debtor's balance actually reached zero — the latest date
+ * among its Supported write-offs and active payments — or null while a
+ * balance remains outstanding. Used only for List of Debt Records' 1-year
+ * retention window; every other report keeps showing closed debtors
+ * indefinitely.
+ */
+export function debtorClosedDate(d: Debtor): string | null {
+  if (debtorRemainingBalance(d) > 0) return null;
+  const dates: string[] = [];
+  for (const w of d.writeOffs) if (w.status === 'SUPPORTED') dates.push(w.dateOfWriteOff);
+  for (const p of d.payments) if (!p.voided) dates.push(p.date);
+  if (dates.length === 0) return null;
+  return dates.reduce((latest, date) => (date > latest ? date : latest), dates[0]);
+}
+
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+/**
+ * List of Debt Records' own retention rule: once a debtor's balance is
+ * fully resolved (Paid, or written off down to $0), it stays on that list
+ * for a year after it closed, then drops off. Nowhere else in the app
+ * applies this cutoff.
+ */
+export function withinListRetentionWindow(d: Debtor, today: string): boolean {
+  const closedDate = debtorClosedDate(d);
+  if (!closedDate) return true;
+  return parseDate(today).getTime() - parseDate(closedDate).getTime() <= ONE_YEAR_MS;
+}
+
+/**
  * Returns the aging buckets that should actually be displayed/summed for a
  * debtor, resolved live against `today` so records shift columns as the
  * simulated date changes:
  *  - arEntries (multiple amount + due date pairs) take priority when present.
  *  - a single legacy requiredPaidDate/totalARAmount pair is used next.
  *  - otherwise the directly-entered legacy bucket fields are returned as-is.
- * Once any of the debtor's write-offs are Supported, their combined amount is
- * then knocked off the result (oldest arrears first) — every report/total
- * that goes through this function reflects the write-off automatically.
+ * Once any of the debtor's write-offs are Supported, or any payment has
+ * been made (and not reopened), the combined amount is then knocked off
+ * the result (oldest arrears first) — every report/total that goes
+ * through this function reflects both automatically.
  */
 export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
   let buckets: AgingBuckets;
@@ -144,9 +198,9 @@ export function resolveDebtorBuckets(d: Debtor, today: string): AgingBuckets {
       arrears5yPlus: d.arrears5yPlus,
     };
   }
-  const writtenOff = totalSupportedWriteOff(d);
-  if (writtenOff > 0) {
-    buckets = knockOffOldestFirst(buckets, writtenOff);
+  const knockedOff = totalSupportedWriteOff(d) + totalActivePayments(d);
+  if (knockedOff > 0) {
+    buckets = knockOffOldestFirst(buckets, knockedOff);
   }
   return buckets;
 }
@@ -169,22 +223,23 @@ export function debtorAmountRows(d: Debtor): { amount: number; requiredPaidDate:
 }
 
 /**
- * Same rows as debtorAmountRows, but with all Supported write-offs' combined
- * amount knocked off — for the List of Debtors' Amount column, which
- * otherwise kept showing the pre-write-off figure even though every
- * aggregate report already reflects the reduction via resolveDebtorBuckets.
- * Reduces the rows actually in arrears (due on or before `today`) first,
- * earliest due date first, mirroring resolveDebtorBuckets' oldest-bucket-
- * first order since each row falls into exactly one bucket. Rows not yet due
- * are never touched, same as resolveDebtorBuckets leaves notInArrears alone.
+ * Same rows as debtorAmountRows, but with all Supported write-offs' and all
+ * active payments' combined amount knocked off — for the List of Debtors'
+ * Amount column, which otherwise kept showing the pre-knock-off figure even
+ * though every aggregate report already reflects the reduction via
+ * resolveDebtorBuckets. Reduces the rows actually in arrears (due on or
+ * before `today`) first, earliest due date first, mirroring
+ * resolveDebtorBuckets' oldest-bucket-first order since each row falls into
+ * exactly one bucket. Rows not yet due are never touched, same as
+ * resolveDebtorBuckets leaves notInArrears alone.
  */
 export function debtorAmountRowsNetOfWriteOff(
   d: Debtor,
   today: string,
 ): { amount: number; requiredPaidDate: string }[] {
   const rows = debtorAmountRows(d);
-  const writtenOff = totalSupportedWriteOff(d);
-  if (writtenOff <= 0) return rows;
+  const knockedOff = totalSupportedWriteOff(d) + totalActivePayments(d);
+  if (knockedOff <= 0) return rows;
 
   const overdueOldestFirst = rows
     .map((r, index) => ({ ...r, index }))
@@ -192,7 +247,7 @@ export function debtorAmountRowsNetOfWriteOff(
     .sort((a, b) => a.requiredPaidDate.localeCompare(b.requiredPaidDate));
 
   const netAmountByIndex = new Map<number, number>();
-  let remaining = writtenOff;
+  let remaining = knockedOff;
   for (const r of overdueOldestFirst) {
     if (remaining <= 0) break;
     const take = Math.min(r.amount, remaining);
@@ -300,11 +355,11 @@ export interface TransactionRow {
  * row/popup should only ever show its own line's figures.
  * Starts with a single "Arrears" row dated by that entry's payment due date
  * (its gross original amount). Every debtor's arEntries is capped at a
- * single entry, so any Supported write-off necessarily applies entirely to
- * that one entry — adds one "Write Off" row per Supported write-off record.
- * "Paid" is included in TransactionType for when a payments feature exists,
- * but nothing produces one yet. Sorted oldest first with a running balance
- * scoped to this entry alone.
+ * single entry, so any Supported write-off or active payment necessarily
+ * applies entirely to that one entry — adds one "Write Off" row per
+ * Supported write-off record and one "Paid" row per active (not reopened)
+ * payment. Sorted oldest first with a running balance scoped to this entry
+ * alone.
  */
 export function buildTransactionLedgerForEntry(d: Debtor, entryIndex: number): TransactionRow[] {
   const grossRows = debtorAmountRows(d);
@@ -318,6 +373,12 @@ export function buildTransactionLedgerForEntry(d: Debtor, entryIndex: number): T
   for (const w of d.writeOffs) {
     if (w.status === 'SUPPORTED') {
       rows.push({ date: w.dateOfWriteOff, type: 'WRITE_OFF', amount: -w.writeOffAmount });
+    }
+  }
+
+  for (const p of d.payments) {
+    if (!p.voided) {
+      rows.push({ date: p.date, type: 'PAID', amount: -p.amount });
     }
   }
 

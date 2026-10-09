@@ -76,6 +76,16 @@ async function openDebtorByName(page: Page, name: string) {
   return modal;
 }
 
+/** Same as openDebtorByName, but pages forward first in case the debtor
+ * isn't on whichever page the table currently happens to be showing. */
+async function openDebtorByNameAcrossPages(page: Page, name: string) {
+  const row = await findRowAcrossPages(page, name);
+  await row.locator('button').click();
+  const modal = page.locator('div.fixed.inset-0.z-50');
+  await expect(modal).toBeVisible();
+  return modal;
+}
+
 /** Finds a row containing `text`, paging forward from wherever the table
  * currently is until it's found (DataTable resets to page 1 whenever the
  * underlying rows change, e.g. after a status update, so this re-searches
@@ -145,14 +155,28 @@ test.describe('no console errors and no blank pages across every persona x tab',
   }
 });
 
-test('Case Reference is the first data column on Debtors Report', async ({ page }) => {
+test('Case Reference sits between Description and Amount/Total AR on List of Debt Records, (FIN) List of Debt Records and Debtors Report', async ({ page }) => {
   await page.goto('/');
-  await setPersona(page, 'Finance Officer');
+  await setPersona(page, 'Super Admin');
+
+  const checkBetweenDescriptionAndAmount = async (nextColumnLabel: string) => {
+    const headers = (await page.locator('table thead th').allTextContents()).map((h) => h.replace('⇅', '').trim());
+    const descIdx = headers.indexOf('Description');
+    expect(descIdx, `expected a Description column, got ${headers}`).toBeGreaterThanOrEqual(0);
+    expect(headers[descIdx + 1]).toBe('Case Reference');
+    expect(headers[descIdx + 2]).toBe(nextColumnLabel);
+  };
+
+  await gotoTabExact(page, 'List of Debt Records');
+  await checkBetweenDescriptionAndAmount('Amount');
+
+  await page.locator('nav ul li button', { hasText: '(FIN) List of Debt Records' }).click();
+  await page.waitForTimeout(150);
+  await checkBetweenDescriptionAndAmount('Amount');
 
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const firstHeader = (await page.locator('table thead th').first().textContent())?.trim();
-  expect(firstHeader?.startsWith('Case Reference'), 'Debtors Report first column').toBe(true);
+  await checkBetweenDescriptionAndAmount('Total AR');
 });
 
 test('Case Reference is the last data column on Arrears Report and (Fin) Arrears Report', async ({ page }) => {
@@ -177,13 +201,13 @@ test('Finance team sees every branch on Debtors Report, branch roles see only th
   await setPersona(page, 'Finance Officer');
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const financeBranches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
+  const financeBranches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(2)'));
   expect(financeBranches.size, 'Finance Officer should see multiple branches').toBeGreaterThan(1);
 
   await setPersona(page, 'Branch Rep PSB');
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const branchRepBranches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
+  const branchRepBranches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(2)'));
   expect([...branchRepBranches]).toEqual(['PSB']);
 });
 
@@ -339,22 +363,22 @@ test('List of Debt Records only shows records the viewer is tagged on as Assigne
   // (Reviewer 1) should see it, not DY Head PSB or another branch's Head.
   await setPersona(page, 'Head TIB');
   await gotoDebtRecords(page);
-  const namesForHeadTib = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(4)'));
+  const namesForHeadTib = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect(namesForHeadTib.has('Lim Wee Keng')).toBe(false);
 
   await setPersona(page, 'DY Head PSB');
   await gotoDebtRecords(page);
-  const namesForDyHeadPsb = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(4)'));
+  const namesForDyHeadPsb = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect(namesForDyHeadPsb.has('Lim Wee Keng')).toBe(false);
 
   await setPersona(page, 'Head PSB');
   await gotoDebtRecords(page);
-  const namesForHeadPsb = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(4)'));
+  const namesForHeadPsb = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect(namesForHeadPsb.has('Lim Wee Keng')).toBe(true);
 
   await setPersona(page, 'Branch Rep PSB');
   await gotoDebtRecords(page);
-  const namesForBranchRep = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(4)'));
+  const namesForBranchRep = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
   expect(namesForBranchRep.has('Lim Wee Keng')).toBe(true);
 });
 
@@ -720,7 +744,7 @@ test('seed data covers every branch with 20 debt records each, including TIB, SI
   await setPersona(page, 'Finance Officer');
   await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
   await page.waitForTimeout(150);
-  const branches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(3)'));
+  const branches = new Set(await collectAcrossPages(page, 'table tbody tr td:nth-child(2)'));
   expect([...branches].sort()).toEqual(['FIN', 'PCB', 'PSB', 'SIB', 'TIB']);
 });
 
@@ -1280,6 +1304,145 @@ test('Written Off and To be Written Off Call For Return tabs pull from Debt Mana
   expect(names.some((n) => n.trim() === toBeDebtor)).toBe(true);
 });
 
+test('Payments tab: a partial payment keeps Supported, a second payment that clears the balance marks Paid, and Reopen reverses it', async ({ page }) => {
+  await page.goto('/');
+
+  // Tay Boon Huat (PSB) is seeded Supported with Head PSB as Reviewer 1 and
+  // a single $11,000 AR entry.
+  const debtorName = 'Tay Boon Huat';
+
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoDebtRecords(page);
+  const modal = await openDebtorByNameAcrossPages(page, debtorName);
+  await modal.locator('button', { hasText: /^Payments \(/ }).click();
+
+  const dateInput = modal.locator('input[type=date]');
+  const amountInput = modal.locator('input[type=number]');
+  const submitBtn = modal.getByRole('button', { name: 'Submit', exact: true });
+
+  // An amount bigger than the outstanding balance can't be submitted.
+  await dateInput.fill('2027-01-01');
+  await amountInput.fill('999999');
+  await expect(submitBtn).toBeDisabled();
+
+  // Partial payment of $4,000, leaving $7,000 outstanding.
+  await amountInput.fill('4000');
+  await expect(submitBtn).toBeEnabled();
+  await submitBtn.click();
+  await expect(modal.locator('td', { hasText: '$4,000' })).toBeVisible();
+  await expect(modal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
+  await expect(modal).toContainText('Outstanding balance: $7,000');
+
+  // The field is still available for another payment — pay off the rest.
+  await dateInput.fill('2027-02-01');
+  await amountInput.fill('7000');
+  await submitBtn.click();
+  await expect(modal.locator('span', { hasText: 'Paid' }).first()).toBeVisible();
+  await expect(modal).toContainText('This debtor has been fully paid off.');
+  await modal.locator('button:has-text("✕")').click();
+
+  // List of Debt Records' Amount column and Status both reflect it — a
+  // fully knocked-off amount displays as "-", same as every other $0 cell.
+  const row = await findRowAcrossPages(page, debtorName);
+  await expect(row).toContainText('Paid');
+  await expect(row.locator('td').nth(7)).toHaveText('-');
+
+  // Reopening the second payment reverses it — back to Supported with the
+  // $7,000 restored, and the reopened line stays visible, marked Voided.
+  const reopenModal = await openDebtorByNameAcrossPages(page, debtorName);
+  await reopenModal.locator('button', { hasText: /^Payments \(/ }).click();
+  const paymentRows = reopenModal.locator('table').first().locator('tbody tr');
+  await paymentRows.filter({ hasText: '$7,000' }).locator('button:has-text("Reopen")').click();
+  await expect(paymentRows.filter({ hasText: '$7,000' })).toContainText('Voided');
+  await expect(reopenModal.locator('span', { hasText: 'Supported' }).first()).toBeVisible();
+  await expect(reopenModal).toContainText('Outstanding balance: $7,000');
+});
+
+test('List of Debt Records bulk Paid action sums ticked lines, confirms, and knocks Total Arrears to $0', async ({ page }) => {
+  await page.goto('/');
+
+  // Michelle Wong (PSB) is seeded Supported with a single $9,000 AR entry.
+  const debtorName = 'Michelle Wong';
+
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoDebtRecords(page);
+  const row = await findRowAcrossPages(page, debtorName);
+  await row.locator('input[type=checkbox]').check();
+
+  const paidBtn = page.locator('button', { hasText: 'Paid', exact: true });
+  await expect(paidBtn).toBeEnabled();
+  await paidBtn.click();
+  await expect(page.locator('text=Total Paid - $9,000')).toBeVisible();
+
+  // Cancel leaves everything untouched.
+  await page.click('button:has-text("Cancel")');
+  await expect(row).not.toContainText('Paid');
+
+  // Confirm marks it Paid and knocks its arrears to $0 — displayed as "-",
+  // same as every other $0 cell.
+  await row.locator('input[type=checkbox]').check();
+  await paidBtn.click();
+  await page.click('button:has-text("Confirm")');
+  await page.waitForTimeout(150);
+  const rowAfter = await findRowAcrossPages(page, debtorName);
+  await expect(rowAfter).toContainText('Paid');
+  await expect(rowAfter.locator('td').nth(7)).toHaveText('-');
+});
+
+test('Paid and fully Written Off lines drop off List of Debt Records after a year, but stay on Debtors Report', async ({ page }) => {
+  await page.goto('/');
+
+  // Anand s/o Kumar (PSB) is seeded Supported with DY Head PSB as Reviewer 1
+  // (Head PSB as the mandatory Reviewer 2) and a single $3,200 AR entry.
+  const debtorName = 'Anand s/o Kumar';
+
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoDebtRecords(page);
+  const todayStr = await page.locator('input[type=date]').first().inputValue();
+
+  const modal = await openDebtorByNameAcrossPages(page, debtorName);
+  await openWriteOffsTab(modal);
+  await modal.getByRole('button', { name: 'Write Off', exact: true }).click();
+  await modal.locator('input[type=date]').fill(todayStr);
+  await modal.locator('input[type=number]').fill('3200');
+  await modal.getByPlaceholder('Free text').last().fill('Retention window check — full write-off');
+  await modal.locator('button:has-text("Submit")').last().click();
+  await modal.locator('button:has-text("✕")').click();
+
+  await setPersona(page, 'DY Head PSB');
+  await gotoDebtRecords(page);
+  const reviewerModal = await openDebtorByNameAcrossPages(page, debtorName);
+  await openWriteOffsTab(reviewerModal);
+  await reviewerModal.locator('button:has-text("Support")').click();
+  await expect(reviewerModal.locator('span', { hasText: 'Written Off' }).first()).toBeVisible();
+  await reviewerModal.locator('button:has-text("✕")').click();
+
+  // Still within the 1-year window: visible on both List of Debt Records
+  // (Branch Rep, tagged as Assigned To) and Debtors Report.
+  await setPersona(page, 'Branch Rep PSB');
+  await gotoDebtRecords(page);
+  expect(await (await findRowAcrossPages(page, debtorName)).count()).toBe(1);
+  await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
+  await page.waitForTimeout(150);
+  expect(await (await findRowAcrossPages(page, debtorName)).count()).toBe(1);
+
+  // Push the simulated date to just over a year after the write-off closed
+  // it — now it drops off List of Debt Records, but Debtors Report still
+  // shows its full history.
+  const farFuture = new Date(todayStr);
+  farFuture.setDate(farFuture.getDate() + 400);
+  const farFutureStr = farFuture.toISOString().slice(0, 10);
+  await page.locator('input[type=date]').first().fill(farFutureStr);
+  await page.waitForTimeout(150);
+
+  await gotoDebtRecords(page);
+  expect(await (await findRowAcrossPages(page, debtorName)).count()).toBe(0);
+
+  await page.locator('nav ul li button', { hasText: 'Debtors Report' }).click();
+  await page.waitForTimeout(150);
+  expect(await (await findRowAcrossPages(page, debtorName)).count()).toBe(1);
+});
+
 test('List of Debt Records Status column shows only one status — a write-off in flight takes over from the debtor status', async ({ page }) => {
   await page.goto('/');
 
@@ -1288,7 +1451,7 @@ test('List of Debt Records Status column shows only one status — a write-off i
   await gotoDebtRecords(page);
   const debtorName = 'Lim Wee Keng';
   const row = page.locator('table tbody tr', { hasText: debtorName }).first();
-  await expect(row.locator('td').nth(2)).toContainText('Supported');
+  await expect(row.locator('td').nth(1)).toContainText('Supported');
 
   const modal = await openDebtorByName(page, debtorName);
   await openWriteOffsTab(modal);
@@ -1302,7 +1465,7 @@ test('List of Debt Records Status column shows only one status — a write-off i
 
   // Saved (not yet submitted): the list shows only "To Be Written Off" now —
   // not "Supported" too.
-  const statusCell = row.locator('td').nth(2);
+  const statusCell = row.locator('td').nth(1);
   await expect(statusCell).toContainText('To Be Written Off');
   await expect(statusCell).not.toContainText('Supported');
 
@@ -1327,7 +1490,7 @@ test('List of Debt Records Status column shows only one status — a write-off i
   await page.waitForTimeout(150);
 
   // Approved: nothing left in flight, so the debtor's own status shows again.
-  const reviewerStatusCell = reviewerRow.locator('td').nth(2);
+  const reviewerStatusCell = reviewerRow.locator('td').nth(1);
   await expect(reviewerStatusCell).toContainText('Supported');
   await expect(reviewerStatusCell).not.toContainText('To Be Written Off');
   await expect(reviewerStatusCell).not.toContainText('Request Write Off');

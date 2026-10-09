@@ -6,7 +6,7 @@ import { DebtorFormModal } from '../components/DebtorFormModal';
 import { DebtorDetailsModal } from '../components/DebtorDetailsModal';
 import { EffectiveStatusBadge } from '../components/StatusBadge';
 import { formatCurrency } from '../utils/format';
-import { debtorAmountRowsNetOfWriteOff } from '../utils/aging';
+import { debtorAmountRowsNetOfWriteOff, debtorRemainingBalance, withinListRetentionWindow } from '../utils/aging';
 import { isSuperAdmin, visibleDebtRecords } from '../utils/visibility';
 import { PERSONAS } from '../types';
 import type { Debtor, DebtorStatus } from '../types';
@@ -54,21 +54,26 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
     simulatedToday,
     updateDebtorsStatus,
     deleteDebtors,
+    markDebtorsPaid,
   } = useApp();
   const [showNew, setShowNew] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
   const [viewingDebtorId, setViewingDebtorId] = useState<string | null>(null);
   const [viewingEntryIndex, setViewingEntryIndex] = useState<number>(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
   const viewingDebtor = viewingDebtorId ? (debtors.find((d) => d.id === viewingDebtorId) ?? null) : null;
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
 
-  const scopedDebtors = useMemo(
-    () => (consolidated ? debtors : visibleDebtRecords(persona, debtors)),
-    [debtors, persona, consolidated],
-  );
+  // List of Debt Records (and its (FIN) copy) are the only views where a
+  // fully closed record (Paid, or written off down to $0) drops off after a
+  // year — every other report keeps showing full history indefinitely.
+  const scopedDebtors = useMemo(() => {
+    const base = consolidated ? debtors : visibleDebtRecords(persona, debtors);
+    return base.filter((d) => withinListRetentionWindow(d, simulatedToday));
+  }, [debtors, persona, consolidated, simulatedToday]);
 
   const rows: DebtorEntryRow[] = useMemo(() => {
     const out: DebtorEntryRow[] = [];
@@ -128,9 +133,20 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
     );
   }, [rows, canActAsReviewer, persona]);
 
+  // Supported lines its own Assigned To Branch Rep can mark fully Paid in
+  // one go via the Paid button.
+  const paidEligibleIds = useMemo(() => {
+    if (!canActAsBranchRep) return new Set<string>();
+    return new Set(
+      rows
+        .filter((r) => r.status === 'SUPPORTED' && (isSuperAdmin(persona) || r.debtor.assignedToId === persona.id))
+        .map((r) => r.debtor.id),
+    );
+  }, [rows, canActAsBranchRep, persona]);
+
   const eligibleIds = useMemo(
-    () => new Set([...draftEligibleIds, ...reviewEligibleIds]),
-    [draftEligibleIds, reviewEligibleIds],
+    () => new Set([...draftEligibleIds, ...reviewEligibleIds, ...paidEligibleIds]),
+    [draftEligibleIds, reviewEligibleIds, paidEligibleIds],
   );
 
   const toggleRow = (debtorId: string) => {
@@ -151,6 +167,16 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
 
   const selectedDraftIds = [...selected].filter((id) => draftEligibleIds.has(id));
   const selectedReviewIds = [...selected].filter((id) => reviewEligibleIds.has(id));
+  const selectedPaidIds = [...selected].filter((id) => paidEligibleIds.has(id));
+
+  const totalPaidAmount = useMemo(
+    () =>
+      selectedPaidIds.reduce((sum, id) => {
+        const debtor = scopedDebtors.find((d) => d.id === id);
+        return debtor ? sum + debtorRemainingBalance(debtor) : sum;
+      }, 0),
+    [selectedPaidIds, scopedDebtors],
+  );
 
   const handleSubmit = () => {
     if (selectedDraftIds.length === 0) return;
@@ -178,6 +204,13 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
     if (selectedReviewIds.length === 0) return;
     updateDebtorsStatus(selectedReviewIds, 'DRAFT', 'Rejected', persona.label);
     setSelected(new Set());
+  };
+
+  const handleConfirmPaid = () => {
+    if (selectedPaidIds.length === 0) return;
+    markDebtorsPaid(selectedPaidIds, simulatedToday, persona.label);
+    setSelected(new Set());
+    setShowPaidConfirm(false);
   };
 
   const columns: ColumnDef<DebtorEntryRow>[] = [];
@@ -209,13 +242,6 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
   }
 
   columns.push(
-    {
-      key: 'caseReference',
-      header: 'Case Reference',
-      accessor: (r) => r.caseReference,
-      render: (r) => r.caseReference || '-',
-      sortType: 'alpha',
-    },
     {
       key: 'status',
       header: 'Status',
@@ -259,6 +285,13 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
       key: 'description',
       header: 'Description',
       accessor: (r) => descName(r.descriptionId),
+      sortType: 'alpha',
+    },
+    {
+      key: 'caseReference',
+      header: 'Case Reference',
+      accessor: (r) => r.caseReference,
+      render: (r) => r.caseReference || '-',
       sortType: 'alpha',
     },
     {
@@ -323,6 +356,13 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Delete
+              </button>
+              <button
+                onClick={() => setShowPaidConfirm(true)}
+                disabled={selectedPaidIds.length === 0}
+                className="rounded-md border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Paid
               </button>
               <button
                 onClick={handleSubmit}
@@ -391,6 +431,29 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
           entryIndex={viewingEntryIndex}
           onClose={() => setViewingDebtorId(null)}
         />
+      )}
+
+      {showPaidConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
+            <h2 className="mb-3 text-lg font-semibold text-brand-navy">Confirm Payment</h2>
+            <p className="mb-5 text-sm text-slate-600">Total Paid - {formatCurrency(totalPaidAmount)}</p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowPaidConfirm(false)}
+                className="rounded-md border border-slate-300 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmPaid}
+                className="rounded-md bg-brand-gold px-4 py-1.5 text-sm font-semibold text-brand-navy hover:brightness-95"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

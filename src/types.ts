@@ -53,7 +53,7 @@ export interface ReferenceItem {
   natureId?: string;
 }
 
-export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'EDIT_REQUESTED';
+export type DebtorStatus = 'DRAFT' | 'PENDING_REVIEW' | 'SUPPORTED' | 'EDIT_REQUESTED' | 'PAID';
 
 /**
  * A proposed change to an already-Supported debtor, awaiting Reviewer 1's
@@ -132,6 +132,13 @@ export interface Debtor {
    * Supported entry's amount is knocked off the debtor's arrears
    * cumulatively (see resolveDebtorBuckets). */
   writeOffs: WriteOffRecord[];
+  /** Payments take effect immediately, with no review step — unlike
+   * write-offs, there's no "in flight" state. A debtor can be paid in full
+   * or in several partial payments over time; each knocks its amount off
+   * the arrears (see resolveDebtorBuckets / debtorRemainingBalance), and
+   * the debtor becomes Paid once nothing remains. Reopening a payment sets
+   * `voided` instead of removing it, so the audit trail stays intact. */
+  payments: PaymentRecord[];
   auditLog: AuditLogEntry[];
 }
 
@@ -146,6 +153,18 @@ export interface WriteOffRecord {
    * dateOfWriteOff — not user-editable. */
   daysInArrears: number;
   reasonForWriteOff: string;
+}
+
+export interface PaymentRecord {
+  id: string;
+  /** The date Branch Rep confirmed/submitted it — not user-editable when
+   * recorded via the List of Debt Records' bulk Paid action. */
+  date: string;
+  amount: number;
+  /** Set when Branch Rep reopens the payment to undo a mistaken entry —
+   * the amount is no longer counted toward the debtor's balance, but the
+   * record itself is kept (not removed) for the audit trail. */
+  voided: boolean;
 }
 
 export type TransactionType = 'ARREARS' | 'WRITE_OFF' | 'PAID';

@@ -169,6 +169,7 @@ const mkDebtor = (
     reviewer1Id: `${reviewer1Role}_${branch}`,
     reviewer2Id,
     writeOffs,
+    payments: [],
     auditLog: [{ id: `log-${id}-seed`, date: '2026-01-01', actor: 'Finance', action: 'Sample data loaded' }],
   };
 };
