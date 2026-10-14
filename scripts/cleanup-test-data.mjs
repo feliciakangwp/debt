@@ -30,8 +30,12 @@ function idList(rows) {
 
 async function rest(path, headers, options = {}) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, { headers, ...options });
-  if (!res.ok) throw new Error(`${options.method ?? 'GET'} ${path} failed: ${res.status} ${await res.text()}`);
-  return res.status === 204 ? [] : res.json();
+  const text = await res.text();
+  if (!res.ok) throw new Error(`${options.method ?? 'GET'} ${path} failed: ${res.status} ${text}`);
+  // PostgREST returns an empty body for DELETE/PATCH/POST under
+  // Prefer: return=minimal — status code alone (204 vs 201) isn't a
+  // reliable signal of that, so just check whether there's anything to parse.
+  return text ? JSON.parse(text) : [];
 }
 
 async function main() {

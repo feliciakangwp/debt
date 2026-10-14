@@ -36,11 +36,13 @@ jobs:
         continue-on-error: true
       - run: node scripts/cleanup-test-data.mjs
         if: always()
+        continue-on-error: true
         env:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
       - run: node scripts/reset-named-seed-debtors.mjs
         if: always()
+        continue-on-error: true
         env:
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
           TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
