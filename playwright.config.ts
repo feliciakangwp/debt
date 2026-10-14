@@ -2,7 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: true,
+  // Tests now read/write one shared, persistent Supabase project instead of
+  // each getting its own isolated localStorage, so letting them run
+  // concurrently causes real data races (e.g. one test's row count including
+  // another test's in-flight insert). Run them one at a time.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
