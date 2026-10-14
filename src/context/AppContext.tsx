@@ -1,106 +1,54 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type {
-  AuditLogEntry,
+  Branch,
   CallForReturnPeriod,
   CfrArrearsSubmission,
   CfrSubmissionStatus,
   Debtor,
   DebtorEditProposal,
   DebtorStatus,
-  PaymentRecord,
   Persona,
   ReferenceItem,
   WriteOffRecord,
 } from '../types';
 import { BRANCHES, PERSONAS } from '../types';
-import { DEBTORS_SEED, DESCRIPTION_SEED, NATURE_SEED } from '../data/seed';
 import { debtorRemainingBalance, todayIso } from '../utils/aging';
 import { formatCurrency } from '../utils/format';
+import { supabase } from '../lib/supabaseClient';
+import {
+  dbAddCallForReturnPeriod,
+  dbAddDebtor,
+  dbAddReferenceItem,
+  dbApproveEdit,
+  dbCreateCfrSubmissions,
+  dbDeleteDebtors,
+  dbRecordPayment,
+  dbRejectEdit,
+  dbRejectWriteOff,
+  dbReopenPayment,
+  dbRequestEdit,
+  dbSaveWriteOff,
+  dbSetCfrSubmissionStatus,
+  dbSetReferenceItemActive,
+  dbSupportWriteOff,
+  dbUpdateCallForReturnPeriod,
+  dbUpdateDebtor,
+  dbUpdateDebtorDetails,
+  dbUpdateDebtorsStatus,
+  fetchAllData,
+} from '../lib/db';
 
-const STORAGE_KEY = 'debt-management-module-v1';
-
-// Bump whenever a change requires overwriting persisted reference-list or
-// seed debtor data (e.g. a refreshed sample dataset) rather than just
-// adding to it. A version bump replaces every browser's saved debtor list
-// with the current DEBTORS_SEED — only do this for sample/test data
-// refreshes, since it discards anything a tester added through the UI.
-const DATA_VERSION = 7;
-
-interface PersistedState {
-  natureList: ReferenceItem[];
-  descriptionList: ReferenceItem[];
-  debtors: Debtor[];
-  personaId: string;
-  simulatedToday: string;
-  dataVersion: number;
-  callForReturnPeriods: CallForReturnPeriod[];
-  cfrArrearsSubmissions: CfrArrearsSubmission[];
-}
-
-// Backfills fields added after a debtor may have already been persisted to
-// localStorage, so older saved records never carry `undefined` into code
-// that assumes a value is present (e.g. joining reasons/case references).
-// Debtors saved before the approval flow existed default to SUPPORTED so
-// they don't disappear from reports/reviewer/Head views they were already
-// visible on.
-function normalizeDebtors(debtors: Debtor[]): Debtor[] {
-  return debtors.map((d) => ({
-    ...d,
-    status: d.status ?? 'SUPPORTED',
-    reasonNonRecovery: d.reasonNonRecovery ?? '',
-    recoverySteps: d.recoverySteps ?? '',
-    caseReference: d.caseReference ?? '',
-    writeOffs: d.writeOffs ?? [],
-    payments: d.payments ?? [],
-    auditLog: d.auditLog ?? [],
-    assignedToId: d.assignedToId ?? '',
-    reviewer1Id: d.reviewer1Id ?? '',
-  }));
-}
-
-function loadInitial(): PersistedState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PersistedState>;
-      if ((parsed.dataVersion ?? 1) < DATA_VERSION) {
-        return {
-          natureList: parsed.natureList ?? NATURE_SEED,
-          descriptionList: DESCRIPTION_SEED,
-          debtors: DEBTORS_SEED,
-          personaId: parsed.personaId ?? 'FINANCE',
-          simulatedToday: parsed.simulatedToday ?? todayIso(),
-          dataVersion: DATA_VERSION,
-          callForReturnPeriods: parsed.callForReturnPeriods ?? [],
-          cfrArrearsSubmissions: parsed.cfrArrearsSubmissions ?? [],
-        };
-      }
-      return {
-        natureList: parsed.natureList ?? NATURE_SEED,
-        descriptionList: parsed.descriptionList ?? DESCRIPTION_SEED,
-        debtors: normalizeDebtors(parsed.debtors ?? DEBTORS_SEED),
-        personaId: parsed.personaId ?? 'FINANCE',
-        simulatedToday: parsed.simulatedToday ?? todayIso(),
-        dataVersion: DATA_VERSION,
-        callForReturnPeriods: parsed.callForReturnPeriods ?? [],
-        cfrArrearsSubmissions: parsed.cfrArrearsSubmissions ?? [],
-      };
-    }
-  } catch {
-    // ignore corrupt storage
-  }
-  return {
-    natureList: NATURE_SEED,
-    descriptionList: DESCRIPTION_SEED,
-    debtors: DEBTORS_SEED,
-    personaId: 'FINANCE',
-    simulatedToday: todayIso(),
-    dataVersion: DATA_VERSION,
-    callForReturnPeriods: [],
-    cfrArrearsSubmissions: [],
-  };
-}
+const REALTIME_TABLES = [
+  'reference_items',
+  'debtors',
+  'debtor_ar_entries',
+  'debtor_write_offs',
+  'debtor_payments',
+  'audit_log',
+  'call_for_return_periods',
+  'cfr_arrears_submissions',
+];
 
 interface AppContextValue {
   persona: Persona;
@@ -110,6 +58,9 @@ interface AppContextValue {
   debtors: Debtor[];
   simulatedToday: string;
   setSimulatedToday: (isoDate: string) => void;
+  loading: boolean;
+  error: string | null;
+  clearError: () => void;
   addReferenceItem: (list: 'nature' | 'description', name: string, natureId?: string) => void;
   toggleReferenceItem: (list: 'nature' | 'description', id: string) => void;
   addDebtor: (debtor: Omit<Debtor, 'id'>) => void;
@@ -156,104 +107,125 @@ function sortAlpha(list: ReferenceItem[]): ReferenceItem[] {
   return [...list].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const initial = useMemo(loadInitial, []);
-  const [personaId, setPersonaId] = useState(initial.personaId);
-  const [natureList, setNatureList] = useState<ReferenceItem[]>(initial.natureList);
-  const [descriptionList, setDescriptionList] = useState<ReferenceItem[]>(
-    initial.descriptionList,
-  );
-  const [debtors, setDebtors] = useState<Debtor[]>(initial.debtors);
-  const [simulatedToday, setSimulatedToday] = useState<string>(initial.simulatedToday);
-  const [callForReturnPeriods, setCallForReturnPeriods] = useState<CallForReturnPeriod[]>(
-    initial.callForReturnPeriods,
-  );
-  const [cfrArrearsSubmissions, setCfrArrearsSubmissions] = useState<CfrArrearsSubmission[]>(
-    initial.cfrArrearsSubmissions,
-  );
+function errorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error ? e.message : fallback;
+}
 
-  useEffect(() => {
-    const state: PersistedState = {
-      natureList,
-      descriptionList,
-      debtors,
-      personaId,
-      simulatedToday,
-      dataVersion: DATA_VERSION,
-      callForReturnPeriods,
-      cfrArrearsSubmissions,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [
-    natureList,
-    descriptionList,
-    debtors,
-    personaId,
-    simulatedToday,
-    callForReturnPeriods,
-    cfrArrearsSubmissions,
-  ]);
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [personaId, setPersonaId] = useState('FINANCE');
+  const [simulatedToday, setSimulatedToday] = useState<string>(todayIso());
+  const [natureList, setNatureList] = useState<ReferenceItem[]>([]);
+  const [descriptionList, setDescriptionList] = useState<ReferenceItem[]>([]);
+  const [debtors, setDebtors] = useState<Debtor[]>([]);
+  const [callForReturnPeriods, setCallForReturnPeriods] = useState<CallForReturnPeriod[]>([]);
+  const [cfrArrearsSubmissions, setCfrArrearsSubmissions] = useState<CfrArrearsSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Always reads the latest state inside closures created once (the
+  // realtime subscription, the debounce timer) without re-subscribing.
+  const debtorsRef = useRef(debtors);
+  debtorsRef.current = debtors;
+  const cfrArrearsSubmissionsRef = useRef(cfrArrearsSubmissions);
+  cfrArrearsSubmissionsRef.current = cfrArrearsSubmissions;
 
   const persona = useMemo(
     () => PERSONAS.find((p) => p.id === personaId) ?? PERSONAS[PERSONAS.length - 1],
     [personaId],
   );
 
+  const refetchAll = useCallback(async () => {
+    const data = await fetchAllData();
+    setNatureList(data.natureList);
+    setDescriptionList(data.descriptionList);
+    setDebtors(data.debtors);
+    setCallForReturnPeriods(data.callForReturnPeriods);
+    setCfrArrearsSubmissions(data.cfrArrearsSubmissions);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        await refetchAll();
+        if (active) setError(null);
+      } catch (e) {
+        if (active) setError(errorMessage(e, 'Failed to load data from the database.'));
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [refetchAll]);
+
+  // Realtime: any change from another browser (or another tab) triggers a
+  // debounced refetch, so everyone stays in sync without a manual reload.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefetch = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        refetchAll().catch((e) => setError(errorMessage(e, 'Failed to refresh data from the database.')));
+      }, 400);
+    };
+
+    const channel = supabase.channel('debt-module-changes');
+    for (const table of REALTIME_TABLES) {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, scheduleRefetch);
+    }
+    channel.subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [refetchAll]);
+
+  const clearError = () => setError(null);
+
+  // Every mutating action runs its Supabase write(s) then refetches, so
+  // local state always ends up matching the database exactly; any failure
+  // (load or save) surfaces as a readable error instead of silently
+  // leaving the UI out of sync.
+  const runAction = (fn: () => Promise<void>, fallback: string) => {
+    fn()
+      .then(() => refetchAll())
+      .then(() => setError(null))
+      .catch((e) => setError(errorMessage(e, fallback)));
+  };
+
   const addReferenceItem = (list: 'nature' | 'description', name: string, natureId?: string) => {
     const trimmed = name.trim();
     if (!trimmed) return;
     if (list === 'description' && !natureId) return;
-    const item: ReferenceItem = {
-      id: `${list}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      name: trimmed,
-      active: true,
-      ...(list === 'description' ? { natureId } : {}),
-    };
-    if (list === 'nature') setNatureList((prev) => sortAlpha([...prev, item]));
-    else setDescriptionList((prev) => sortAlpha([...prev, item]));
+    runAction(() => dbAddReferenceItem(list, trimmed, natureId), `Adding the ${list} item failed.`);
   };
 
   const toggleReferenceItem = (list: 'nature' | 'description', id: string) => {
-    const updater = (prev: ReferenceItem[]) =>
-      prev.map((item) => (item.id === id ? { ...item, active: !item.active } : item));
-    if (list === 'nature') setNatureList(updater);
-    else setDescriptionList(updater);
+    const current = (list === 'nature' ? natureList : descriptionList).find((item) => item.id === id);
+    if (!current) return;
+    runAction(() => dbSetReferenceItemActive(id, !current.active), 'Updating the reference item failed.');
   };
 
   const addDebtor = (debtor: Omit<Debtor, 'id'>) => {
-    const id = `debtor-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setDebtors((prev) => [...prev, { ...debtor, id }]);
+    runAction(() => dbAddDebtor(debtor), 'Creating the debt record failed.');
   };
 
   const updateDebtor = (id: string, patch: Partial<Debtor>) => {
-    setDebtors((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+    runAction(() => dbUpdateDebtor(id, patch), 'Updating the debt record failed.');
   };
 
-  const appendAuditLog = <T extends { auditLog: AuditLogEntry[] }>(item: T, action: string, actor: string): T => {
-    const entry: AuditLogEntry = {
-      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      date: simulatedToday,
-      actor,
-      action,
-    };
-    return { ...item, auditLog: [...item.auditLog, entry] };
-  };
-
-  const updateDebtorsStatus = (
-    ids: string[],
-    status: DebtorStatus,
-    logAction: string,
-    actorLabel: string,
-  ) => {
-    const idSet = new Set(ids);
-    setDebtors((prev) =>
-      prev.map((d) => (idSet.has(d.id) ? appendAuditLog({ ...d, status }, logAction, actorLabel) : d)),
+  const updateDebtorsStatus = (ids: string[], status: DebtorStatus, logAction: string, actorLabel: string) => {
+    runAction(
+      () => dbUpdateDebtorsStatus(ids, status, logAction, actorLabel, simulatedToday),
+      'Updating the status failed.',
     );
   };
 
   const deleteDebtors = (ids: string[]) => {
-    const idSet = new Set(ids);
-    setDebtors((prev) => prev.filter((d) => !idSet.has(d.id)));
+    runAction(() => dbDeleteDebtors(ids), 'Deleting the debt record failed.');
   };
 
   const updateDebtorDetails = (
@@ -261,267 +233,141 @@ export function AppProvider({ children }: { children: ReactNode }) {
     patch: Pick<Debtor, 'reasonNonRecovery' | 'recoverySteps'>,
     actorLabel: string,
   ) => {
-    setDebtors((prev) =>
-      prev.map((d) => (d.id === id ? appendAuditLog({ ...d, ...patch }, 'Updated details', actorLabel) : d)),
+    runAction(
+      () => dbUpdateDebtorDetails(id, patch, actorLabel, simulatedToday),
+      'Saving the details failed.',
     );
   };
 
   const requestEdit = (id: string, proposal: DebtorEditProposal, actorLabel: string) => {
-    setDebtors((prev) =>
-      prev.map((d) =>
-        d.id === id
-          ? appendAuditLog(
-              { ...d, status: 'EDIT_REQUESTED', editProposal: proposal },
-              'Requested edit',
-              actorLabel,
-            )
-          : d,
-      ),
-    );
+    runAction(() => dbRequestEdit(id, proposal, actorLabel, simulatedToday), 'Requesting the edit failed.');
   };
 
   const approveEdit = (id: string, actorLabel: string) => {
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (d.id !== id || !d.editProposal) return d;
-        const proposal = d.editProposal;
-        // arEntries is omitted on the proposal when the AR amounts/dates
-        // weren't touched, so the original bucket distribution is kept as-is.
-        const arFields = proposal.arEntries
-          ? {
-              arEntries: proposal.arEntries,
-              notInArrears: 0,
-              arrears6m: 0,
-              arrears6to12m: 0,
-              arrears1to2y: 0,
-              arrears2to3y: 0,
-              arrears3to4y: 0,
-              arrears4to5y: 0,
-              arrears5yPlus: 0,
-              requiredPaidDate: undefined,
-              totalARAmount: undefined,
-            }
-          : {};
-        const applied: Debtor = {
-          ...d,
-          name: proposal.name,
-          natureId: proposal.natureId,
-          descriptionId: proposal.descriptionId,
-          caseReference: proposal.caseReference,
-          ...arFields,
-          editProposal: undefined,
-          status: 'SUPPORTED',
-        };
-        return appendAuditLog(applied, 'Edit approved', actorLabel);
-      }),
-    );
+    const debtor = debtorsRef.current.find((d) => d.id === id);
+    if (!debtor || !debtor.editProposal) return;
+    runAction(() => dbApproveEdit(debtor, actorLabel, simulatedToday), 'Approving the edit failed.');
   };
 
   const rejectEdit = (id: string, actorLabel: string, comment: string) => {
-    setDebtors((prev) =>
-      prev.map((d) =>
-        d.id === id
-          ? appendAuditLog(
-              { ...d, status: 'SUPPORTED', editProposal: undefined },
-              `Edit rejected: ${comment}`,
-              actorLabel,
-            )
-          : d,
-      ),
-    );
+    runAction(() => dbRejectEdit(id, actorLabel, comment, simulatedToday), 'Rejecting the edit failed.');
   };
 
-  // Write-offs are repeatable: at most one "in flight" entry (To be Written
-  // Off or Pending) exists at a time — this upserts that one, either
-  // creating it fresh or updating it while Save is used repeatedly before
-  // an eventual Submit. Once that entry reaches Supported it's no longer
-  // "in flight", so the next Save/Submit starts a brand new entry — that's
-  // how a debtor can be written off more than once over time.
   const saveWriteOff = (
     id: string,
     input: Pick<WriteOffRecord, 'dateOfWriteOff' | 'writeOffAmount' | 'daysInArrears' | 'reasonForWriteOff'>,
     actorLabel: string,
     submit: boolean,
   ) => {
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (d.id !== id) return d;
-        const activeIndex = d.writeOffs.findIndex((w) => w.status !== 'SUPPORTED');
-        const isNew = activeIndex === -1;
-        const status = submit ? 'PENDING' : 'TO_BE_WRITTEN_OFF';
-        const writeOffs: WriteOffRecord[] = isNew
-          ? [
-              ...d.writeOffs,
-              {
-                id: `writeoff-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                status,
-                ...input,
-              },
-            ]
-          : d.writeOffs.map((w, i) => (i === activeIndex ? { ...w, status, ...input } : w));
-        const action = submit
-          ? 'Write off submitted for review'
-          : isNew
-            ? 'Write off saved (to be written off)'
-            : 'Write off updated (to be written off)';
-        return appendAuditLog({ ...d, writeOffs }, action, actorLabel);
-      }),
+    const debtor = debtorsRef.current.find((d) => d.id === id);
+    const existing = debtor?.writeOffs.find((w) => w.status !== 'SUPPORTED') ?? null;
+    runAction(
+      () => dbSaveWriteOff(id, existing?.id ?? null, input, submit, actorLabel, simulatedToday),
+      'Saving the write-off failed.',
     );
   };
 
   const supportWriteOff = (id: string, writeOffId: string, actorLabel: string) => {
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (d.id !== id) return d;
-        const writeOffs = d.writeOffs.map((w) =>
-          w.id === writeOffId && w.status === 'PENDING' ? { ...w, status: 'SUPPORTED' as const } : w,
-        );
-        return appendAuditLog({ ...d, writeOffs }, 'Write off supported', actorLabel);
-      }),
+    runAction(
+      () => dbSupportWriteOff(id, writeOffId, actorLabel, simulatedToday),
+      'Supporting the write-off failed.',
     );
   };
 
   const rejectWriteOff = (id: string, writeOffId: string, actorLabel: string) => {
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (d.id !== id) return d;
-        const writeOffs = d.writeOffs.map((w) =>
-          w.id === writeOffId && w.status === 'PENDING' ? { ...w, status: 'TO_BE_WRITTEN_OFF' as const } : w,
-        );
-        return appendAuditLog({ ...d, writeOffs }, 'Write off rejected', actorLabel);
-      }),
+    runAction(
+      () => dbRejectWriteOff(id, writeOffId, actorLabel, simulatedToday),
+      'Rejecting the write-off failed.',
     );
   };
 
-  // Payments take effect immediately (no review step). Recording one can
-  // bring the debtor's remaining balance to zero, in which case it becomes
-  // Paid; a partial payment leaves the status as-is.
   const recordPayment = (id: string, amount: number, date: string, actorLabel: string) => {
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (d.id !== id) return d;
-        const payment: PaymentRecord = {
-          id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-          date,
-          amount,
-          voided: false,
-        };
-        const payments = [...d.payments, payment];
-        const status = debtorRemainingBalance({ ...d, payments }) <= 0 ? 'PAID' : d.status;
-        return appendAuditLog({ ...d, payments, status }, `Payment recorded: ${formatCurrency(amount)}`, actorLabel);
-      }),
+    const debtor = debtorsRef.current.find((d) => d.id === id);
+    if (!debtor) return;
+    const nextStatus: DebtorStatus =
+      debtorRemainingBalance({ ...debtor, payments: [...debtor.payments, { id: 'pending', date, amount, voided: false }] }) <= 0
+        ? 'PAID'
+        : debtor.status;
+    runAction(
+      () => dbRecordPayment(id, amount, date, nextStatus, actorLabel, `Payment recorded: ${formatCurrency(amount)}`),
+      'Recording the payment failed.',
     );
   };
 
-  // Marks a batch of Supported debt records as fully Paid in one go — the
-  // List of Debt Records' bulk "Paid" action. Each ticked record's full
-  // remaining balance becomes a single payment dated `date` (the Confirm
-  // date), skipping any record that's somehow already settled.
   const markDebtorsPaid = (ids: string[], date: string, actorLabel: string) => {
     const idSet = new Set(ids);
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (!idSet.has(d.id)) return d;
-        const amount = debtorRemainingBalance(d);
-        if (amount <= 0) return d;
-        const payment: PaymentRecord = {
-          id: `payment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${d.id}`,
-          date,
-          amount,
-          voided: false,
-        };
-        return appendAuditLog(
-          { ...d, payments: [...d.payments, payment], status: 'PAID' },
-          `Marked as Paid: ${formatCurrency(amount)}`,
-          actorLabel,
-        );
-      }),
+    const targets = debtorsRef.current.filter((d) => idSet.has(d.id));
+    runAction(
+      () =>
+        Promise.all(
+          targets.map((d) => {
+            const amount = debtorRemainingBalance(d);
+            if (amount <= 0) return Promise.resolve();
+            return dbRecordPayment(d.id, amount, date, 'PAID', actorLabel, `Marked as Paid: ${formatCurrency(amount)}`);
+          }),
+        ).then(() => undefined),
+      'Marking the selected records as Paid failed.',
     );
   };
 
-  // Reopening undoes a mistaken payment: it's voided (not removed, so the
-  // audit trail stays intact) and its amount no longer counts toward the
-  // debtor's balance, reverting the status back to Supported if that
-  // payment was the one that had completed it.
   const reopenPayment = (id: string, paymentId: string, actorLabel: string) => {
-    setDebtors((prev) =>
-      prev.map((d) => {
-        if (d.id !== id) return d;
-        const payments = d.payments.map((p) => (p.id === paymentId ? { ...p, voided: true } : p));
-        const status = d.status === 'PAID' && debtorRemainingBalance({ ...d, payments }) > 0 ? 'SUPPORTED' : d.status;
-        return appendAuditLog({ ...d, payments, status }, 'Payment reopened (voided)', actorLabel);
-      }),
+    const debtor = debtorsRef.current.find((d) => d.id === id);
+    if (!debtor) return;
+    const payments = debtor.payments.map((p) => (p.id === paymentId ? { ...p, voided: true } : p));
+    const nextStatus: DebtorStatus =
+      debtor.status === 'PAID' && debtorRemainingBalance({ ...debtor, payments }) > 0 ? 'SUPPORTED' : debtor.status;
+    runAction(
+      () => dbReopenPayment(id, paymentId, nextStatus, actorLabel, simulatedToday),
+      'Reopening the payment failed.',
     );
   };
 
   const addCallForReturnPeriod = (period: Omit<CallForReturnPeriod, 'id'>) => {
-    const id = `cfr-period-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setCallForReturnPeriods((prev) => [...prev, { ...period, id }]);
+    runAction(() => dbAddCallForReturnPeriod(period), 'Creating the Call for Return period failed.');
   };
 
-  const updateCallForReturnPeriod = (
-    id: string,
-    patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>,
-  ) => {
-    setCallForReturnPeriods((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
+  const updateCallForReturnPeriod = (id: string, patch: Pick<CallForReturnPeriod, 'startDate' | 'endDate'>) => {
+    runAction(
+      () => dbUpdateCallForReturnPeriod(id, patch),
+      'Updating the Call for Return period failed.',
+    );
   };
 
-  // Idempotently makes sure every branch has a Draft submission for the
-  // given period, so the finance-wide views show a complete picture as soon
-  // as a Call for Return period opens, rather than only once each Branch Rep
-  // happens to visit.
   const ensureCfrSubmissionsForPeriod = (periodId: string, actorLabel: string) => {
-    setCfrArrearsSubmissions((prev) => {
-      const existingBranches = new Set(
-        prev.filter((s) => s.periodId === periodId).map((s) => s.branch),
-      );
-      const missing = BRANCHES.filter((b) => !existingBranches.has(b));
-      if (missing.length === 0) return prev;
-      const created = missing.map((branch) =>
-        appendAuditLog<CfrArrearsSubmission>(
-          {
-            id: `cfr-submission-${Date.now()}-${branch}-${Math.random().toString(36).slice(2, 7)}`,
-            periodId,
-            branch,
-            status: 'DRAFT',
-            auditLog: [],
-          },
-          'Call for Return period opened',
-          actorLabel,
-        ),
-      );
-      return [...prev, ...created];
-    });
-  };
-
-  const setCfrSubmissionStatus = (
-    id: string,
-    status: CfrSubmissionStatus,
-    logAction: string,
-    actorLabel: string,
-  ) => {
-    setCfrArrearsSubmissions((prev) =>
-      prev.map((s) => (s.id === id ? appendAuditLog({ ...s, status }, logAction, actorLabel) : s)),
+    const existingBranches = new Set(
+      cfrArrearsSubmissionsRef.current.filter((s) => s.periodId === periodId).map((s) => s.branch),
+    );
+    const missing = BRANCHES.filter((b) => !existingBranches.has(b)) as Branch[];
+    if (missing.length === 0) return;
+    runAction(
+      () => dbCreateCfrSubmissions(periodId, missing, actorLabel, simulatedToday),
+      'Opening the Call for Return period failed.',
     );
   };
 
   const submitCfrArrears = (id: string, actorLabel: string) => {
-    setCfrSubmissionStatus(id, 'PENDING_REVIEW', 'Submitted for review', actorLabel);
+    runAction(
+      () => dbSetCfrSubmissionStatus(id, 'PENDING_REVIEW', 'Submitted for review', actorLabel, simulatedToday),
+      'Submitting for review failed.',
+    );
   };
 
   const approveCfrArrears = (id: string, actorLabel: string) => {
-    setCfrArrearsSubmissions((prev) =>
-      prev.map((s) => {
-        if (s.id !== id) return s;
-        const nextStatus: CfrSubmissionStatus = s.status === 'PENDING_REVIEW' ? 'SUPPORTED' : 'APPROVED';
-        const logAction = nextStatus === 'SUPPORTED' ? 'Approved by Reviewer 1' : 'Approved by Reviewer 2 (Head)';
-        return appendAuditLog({ ...s, status: nextStatus }, logAction, actorLabel);
-      }),
+    const submission = cfrArrearsSubmissionsRef.current.find((s) => s.id === id);
+    if (!submission) return;
+    const nextStatus: CfrSubmissionStatus = submission.status === 'PENDING_REVIEW' ? 'SUPPORTED' : 'APPROVED';
+    const logAction = nextStatus === 'SUPPORTED' ? 'Approved by Reviewer 1' : 'Approved by Reviewer 2 (Head)';
+    runAction(
+      () => dbSetCfrSubmissionStatus(id, nextStatus, logAction, actorLabel, simulatedToday),
+      'Approving failed.',
     );
   };
 
   const rejectCfrArrears = (id: string, actorLabel: string, comment: string) => {
-    setCfrSubmissionStatus(id, 'DRAFT', `Rejected: ${comment}`, actorLabel);
+    runAction(
+      () => dbSetCfrSubmissionStatus(id, 'DRAFT', `Rejected: ${comment}`, actorLabel, simulatedToday),
+      'Rejecting failed.',
+    );
   };
 
   const value: AppContextValue = {
@@ -532,6 +378,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     debtors,
     simulatedToday,
     setSimulatedToday,
+    loading,
+    error,
+    clearError,
     addReferenceItem,
     toggleReferenceItem,
     addDebtor,
@@ -557,6 +406,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     approveCfrArrears,
     rejectCfrArrears,
   };
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-brand-navy">
+        <div className="text-sm text-white/70">Loading data…</div>
+      </div>
+    );
+  }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

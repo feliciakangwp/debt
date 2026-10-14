@@ -48,9 +48,12 @@ interface NavGroup {
 interface SidebarProps {
   active: PageKey;
   onNavigate: (key: PageKey) => void;
+  userEmail: string | null;
+  onChangePassword: () => void;
+  onLogout: () => void;
 }
 
-export function Sidebar({ active, onNavigate }: SidebarProps) {
+export function Sidebar({ active, onNavigate, userEmail, onChangePassword, onLogout }: SidebarProps) {
   const { persona, setPersonaId, simulatedToday, setSimulatedToday } = useApp();
   const operational = hasOperationalAccess(persona);
   const financeTeam = isFinanceTeamPersona(persona);
@@ -201,6 +204,24 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
       <div className="border-t border-white/10 px-5 py-3 text-xs text-white/40">
         Role: {persona.role.replace('_', ' ')}
         {persona.branch ? ` · ${persona.branch}` : ''}
+      </div>
+
+      <div className="border-t border-white/10 px-5 py-3">
+        {userEmail && <div className="mb-2 truncate text-xs text-white/60" title={userEmail}>{userEmail}</div>}
+        <div className="flex gap-2">
+          <button
+            onClick={onChangePassword}
+            className="flex-1 rounded-md border border-white/20 px-2 py-1.5 text-xs font-semibold text-white/85 hover:bg-white/10"
+          >
+            Change Password
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex-1 rounded-md border border-white/20 px-2 py-1.5 text-xs font-semibold text-white/85 hover:bg-brand-gold hover:text-brand-navy"
+          >
+            Logout
+          </button>
+        </div>
       </div>
     </aside>
   );

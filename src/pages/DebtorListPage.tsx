@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { DataTable } from '../components/DataTable';
 import type { ColumnDef } from '../components/DataTable';
 import { DebtorFormModal } from '../components/DebtorFormModal';
@@ -56,6 +57,7 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
     deleteDebtors,
     markDebtorsPaid,
   } = useApp();
+  const { isEditor } = useAuth();
   const [showNew, setShowNew] = useState(false);
   const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
   const [viewingDebtorId, setViewingDebtorId] = useState<string | null>(null);
@@ -102,9 +104,9 @@ export function DebtorListPage({ consolidated = false }: DebtorListPageProps) {
   // The consolidated (FIN) copy is read-only oversight — same convention as
   // every other "(Fin) X" tab in the app — even for a Head FIN/DY Head FIN
   // double-hat, who act on their own tagged records via the regular tab.
-  const canActAsBranchRep = !consolidated && (persona.role === 'BRANCH_REP' || isSuperAdmin(persona));
+  const canActAsBranchRep = isEditor && !consolidated && (persona.role === 'BRANCH_REP' || isSuperAdmin(persona));
   const canActAsReviewer =
-    !consolidated && (persona.role === 'HEAD' || persona.role === 'DY_HEAD' || isSuperAdmin(persona));
+    isEditor && !consolidated && (persona.role === 'HEAD' || persona.role === 'DY_HEAD' || isSuperAdmin(persona));
   const canCreate = canActAsBranchRep;
   const canEdit = canActAsBranchRep;
 

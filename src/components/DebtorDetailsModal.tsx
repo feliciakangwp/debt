@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { AREntriesEditor } from './AREntriesEditor';
 import { EffectiveStatusBadge, WriteOffStatusBadge } from './StatusBadge';
 import { formatCurrency } from '../utils/format';
@@ -87,6 +88,7 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
     recordPayment,
     reopenPayment,
   } = useApp();
+  const { isEditor } = useAuth();
 
   const natureName = (id: string) => natureList.find((n) => n.id === id)?.name ?? id;
   const descName = (id: string) => descriptionList.find((d) => d.id === id)?.name ?? id;
@@ -94,12 +96,12 @@ export function DebtorDetailsModal({ debtor, entryIndex, onClose }: DebtorDetail
   const descriptionsForNature = (nId: string) =>
     descriptionList.filter((d) => d.active && d.natureId === nId);
 
-  const isBranchRep = persona.role === 'BRANCH_REP' || isSuperAdmin(persona);
+  const isBranchRep = isEditor && (persona.role === 'BRANCH_REP' || isSuperAdmin(persona));
   // Both the write-off Support action and Edit Request approval route to
   // whoever is specifically named as this record's Reviewer 1 — not just
   // anyone holding a Head/DY Head role — matching the new per-record
   // reviewer assignment model.
-  const isAssignedReviewer1 = persona.id === debtor.reviewer1Id || isSuperAdmin(persona);
+  const isAssignedReviewer1 = isEditor && (persona.id === debtor.reviewer1Id || isSuperAdmin(persona));
   // Direct-edit fields and "Request to Edit" are only available once a
   // record is Supported — Draft uses the full form instead, and a record
   // that's still Pending Review or already has an edit pending shouldn't be

@@ -1,4 +1,5 @@
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { CfrStatusBadge } from './CfrStatusBadge';
 import { actionForAnyRole } from '../hooks/useCfrSubmissionWorkflow';
 import type { CfrSubmissionWorkflow } from '../hooks/useCfrSubmissionWorkflow';
@@ -98,6 +99,7 @@ export function CfrRejectBox({ workflow }: { workflow: CfrSubmissionWorkflow }) 
  * submission instead. */
 export function CfrSuperAdminPanel({ workflow }: { workflow: CfrSubmissionWorkflow }) {
   const { persona } = useApp();
+  const { isEditor } = useAuth();
   const { statusByBranch, handleSubmit, handleApprove, setRejectingId } = workflow;
   if (!isSuperAdmin(persona)) return null;
 
@@ -115,7 +117,7 @@ export function CfrSuperAdminPanel({ workflow }: { workflow: CfrSubmissionWorkfl
           {BRANCHES.map((b: Branch, idx) => {
             const sub = statusByBranch.get(b);
             if (!sub) return null;
-            const action = actionForAnyRole(sub.status);
+            const action = isEditor ? actionForAnyRole(sub.status) : null;
             return (
               <tr key={b} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                 <td className="px-3 py-2">{b}</td>

@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { LoginPage } from './pages/LoginPage';
+import { SetPasswordPage } from './pages/SetPasswordPage';
 import { Sidebar } from './components/Sidebar';
 import type { PageKey } from './components/Sidebar';
+import { ErrorBanner } from './components/ErrorBanner';
 import { ReferenceListPage } from './pages/ReferenceListPage';
 import { DebtorListPage } from './pages/DebtorListPage';
 import { DebtorsPage } from './pages/DebtorsPage';
@@ -50,8 +54,10 @@ const CFR_PAGES: PageKey[] = [
 ];
 
 function Shell() {
-  const { persona } = useApp();
+  const { persona, error, clearError } = useApp();
+  const { userEmail, signOut } = useAuth();
   const [page, setPage] = useState<PageKey>('debtor-list');
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   useEffect(() => {
     const operational = hasOperationalAccess(persona);
@@ -73,8 +79,16 @@ function Shell() {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar active={page} onNavigate={setPage} />
-      <main className="flex-1 overflow-x-auto p-8">
+      <Sidebar
+        active={page}
+        onNavigate={setPage}
+        userEmail={userEmail}
+        onChangePassword={() => setShowChangePassword(true)}
+        onLogout={signOut}
+      />
+      <main className="flex min-h-screen flex-1 flex-col overflow-x-auto">
+        {error && <ErrorBanner message={error} onDismiss={clearError} />}
+        <div className="flex-1 p-8">
         {page === 'nature' && (
           <ReferenceListPage
             title="Nature of Arrears"
@@ -179,16 +193,43 @@ function Shell() {
           />
         )}
         {page === 'cfr-reports' && <CfrReportsPage consolidated={false} />}
+        </div>
       </main>
+
+      {showChangePassword && (
+        <SetPasswordPage variant="change" onDone={() => setShowChangePassword(false)} onCancel={() => setShowChangePassword(false)} />
+      )}
     </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-brand-navy">
+      <div className="text-sm text-white/70">Loading…</div>
+    </div>
+  );
+}
+
+function AuthGate() {
+  const { initializing, session, isPasswordRecovery, clearPasswordRecovery } = useAuth();
+
+  if (initializing) return <LoadingScreen />;
+  if (isPasswordRecovery) return <SetPasswordPage variant="recovery" onDone={clearPasswordRecovery} />;
+  if (!session) return <LoginPage />;
+
+  return (
+    <AppProvider>
+      <Shell />
+    </AppProvider>
   );
 }
 
 function App() {
   return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }
 

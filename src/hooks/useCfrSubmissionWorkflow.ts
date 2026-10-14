@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 import { getActiveOpenPeriod } from '../utils/callForReturn';
 import type { Branch, CfrArrearsSubmission, CfrSubmissionStatus } from '../types';
 
@@ -39,6 +40,7 @@ export function useCfrSubmissionWorkflow() {
     approveCfrArrears,
     rejectCfrArrears,
   } = useApp();
+  const { isEditor } = useAuth();
 
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectComment, setRejectComment] = useState('');
@@ -63,7 +65,7 @@ export function useCfrSubmissionWorkflow() {
   );
 
   const ownSubmission = persona.branch ? statusByBranch.get(persona.branch) : undefined;
-  const ownAction = ownSubmission ? nextActionFor(ownSubmission.status, persona.role) : null;
+  const ownAction = isEditor && ownSubmission ? nextActionFor(ownSubmission.status, persona.role) : null;
 
   // Surfaces the reviewer's rejection reason to the Branch Rep (and anyone
   // else viewing that branch's submission) once it's back in Draft, so they

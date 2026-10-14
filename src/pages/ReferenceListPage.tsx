@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useAuth } from '../context/AuthContext';
 
 interface ReferenceListPageProps {
   title: string;
@@ -9,6 +10,7 @@ interface ReferenceListPageProps {
 
 export function ReferenceListPage({ title, description, listKey }: ReferenceListPageProps) {
   const { natureList, descriptionList, addReferenceItem, toggleReferenceItem } = useApp();
+  const { isEditor } = useAuth();
   const [newName, setNewName] = useState('');
   const [newNatureId, setNewNatureId] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -31,16 +33,18 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
     <div className="mx-auto max-w-3xl">
       <div className="mb-1 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-brand-navy">{title}</h1>
-        <button
-          onClick={() => setShowForm((s) => !s)}
-          className="rounded-md bg-brand-gold px-4 py-2 text-sm font-semibold text-brand-navy shadow-sm hover:brightness-95"
-        >
-          + New
-        </button>
+        {isEditor && (
+          <button
+            onClick={() => setShowForm((s) => !s)}
+            className="rounded-md bg-brand-gold px-4 py-2 text-sm font-semibold text-brand-navy shadow-sm hover:brightness-95"
+          >
+            + New
+          </button>
+        )}
       </div>
       <p className="mb-5 text-sm text-slate-500">{description}</p>
 
-      {showForm && (
+      {isEditor && showForm && (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-brand-gold/40 bg-brand-gold/10 p-3">
           <input
             autoFocus
@@ -95,7 +99,7 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
                 </th>
               )}
               <th className="px-4 py-2 text-center font-semibold">Status</th>
-              <th className="px-4 py-2 text-center font-semibold">Action</th>
+              {isEditor && <th className="px-4 py-2 text-center font-semibold">Action</th>}
             </tr>
           </thead>
           <tbody>
@@ -118,14 +122,16 @@ export function ReferenceListPage({ title, description, listKey }: ReferenceList
                     {item.active ? 'Active' : 'Inactive'}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-center">
-                  <button
-                    onClick={() => toggleReferenceItem(listKey, item.id)}
-                    className="rounded-md border border-brand-navy/30 px-3 py-1 text-xs font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
-                  >
-                    {item.active ? 'Deactivate' : 'Activate'}
-                  </button>
-                </td>
+                {isEditor && (
+                  <td className="px-4 py-2 text-center">
+                    <button
+                      onClick={() => toggleReferenceItem(listKey, item.id)}
+                      className="rounded-md border border-brand-navy/30 px-3 py-1 text-xs font-semibold text-brand-navy hover:bg-brand-navy hover:text-white"
+                    >
+                      {item.active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
