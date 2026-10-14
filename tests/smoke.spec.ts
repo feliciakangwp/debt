@@ -1,5 +1,19 @@
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
+import { resetSeedDebtors } from '../scripts/lib/seedDebtors.mjs';
+
+// A handful of tests below act directly on specific named seed debtors
+// (write-offs, approvals, payments, case-reference edits) rather than
+// creating their own rows, and more than one test reuses the same name
+// (e.g. "Devi Krishnan"). Resetting those debtors only once per CI run
+// isn't enough — an earlier test's mutation would still break a later
+// test in the same run — so every test gets a clean copy of them first.
+test.beforeEach(async () => {
+  const email = process.env.TEST_USER_EMAIL;
+  const password = process.env.TEST_USER_PASSWORD;
+  if (!email || !password) return;
+  await resetSeedDebtors({ email, password });
+});
 
 const PERSONAS = [
   'Branch Rep PSB', 'Branch Rep TIB', 'Branch Rep SIB', 'Branch Rep PCB', 'Branch Rep FIN',
