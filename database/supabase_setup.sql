@@ -1,36 +1,9 @@
--- Debt Management Module — Supabase setup
---
--- Mirrors the data model the app currently keeps in localStorage
--- (src/context/AppContext.tsx's PersistedState, built from src/types.ts
--- and seeded in src/data/seed.ts). Paste this whole file into the
--- Supabase SQL Editor and run it once on a fresh project.
---
--- What it does, in order:
---   1. Creates the tables, with sensible column types and FKs/checks
---      matching the app's TypeScript types.
---   2. Enables Row Level Security on every table.
---   3. Lets any logged-in (authenticated) user read every table.
---   4. Creates an `editors` table, adds one editor, and restricts
---      insert/update/delete on every table to editors only.
---   5. Adds the data tables to the supabase_realtime publication.
---   6. Inserts the app's existing sample/seed data.
---
--- Note: `personaId`, `simulatedToday` and `dataVersion` are local UI/test
--- controls in the app (which mock persona is selected, the "simulated
--- today" date picker, and the localStorage schema version) — they aren't
--- shared application data, so there's nothing to migrate for them here.
-
--- ============================================================
--- 1. TABLES
--- ============================================================
 
 create table if not exists public.reference_items (
   id text primary key,
   name text not null,
   kind text not null check (kind in ('nature', 'description')),
   active boolean not null default true,
-  -- Only set (and only meaningful) on kind = 'description': the Nature
-  -- item it's linked to. Self-referencing, so nature rows just leave it null.
   nature_id text references public.reference_items (id) on delete cascade
 );
 
@@ -52,20 +25,11 @@ create table if not exists public.debtors (
   reason_non_recovery text not null default '',
   recovery_steps text not null default '',
   case_reference text not null default '',
-  -- Persona ids of the Branch Rep / reviewers tagged on this record —
-  -- persona ids are a fixed, hardcoded list in the app (src/types.ts),
-  -- not a database table, so these are plain text, not foreign keys.
   assigned_to_id text not null,
   reviewer1_id text not null,
   reviewer2_id text,
-  -- Legacy single-entry fields, kept for parity with older saved records
-  -- that predate multiple AR entries; every seeded debtor uses ar_entries
-  -- instead, so these are null for all sample data.
   required_paid_date date,
   total_ar_amount numeric,
-  -- Snapshot of a pending "Request to Edit" (only set while status is
-  -- EDIT_REQUESTED) — a single nested object, not a repeating list, so a
-  -- JSON snapshot is simpler here than another child table.
   edit_proposal jsonb,
   created_at timestamptz not null default now()
 );
@@ -95,9 +59,6 @@ create table if not exists public.debtor_payments (
   voided boolean not null default false
 );
 
--- Shared by debtors and CFR arrears submissions, which both keep an
--- auditLog[] in the app — one table with an entity_type/entity_id pair
--- instead of duplicating the same columns twice.
 create table if not exists public.audit_log (
   id text primary key,
   entity_type text not null check (entity_type in ('debtor', 'cfr_submission')),
@@ -125,14 +86,6 @@ create table if not exists public.editors (
   email text primary key
 );
 
--- ============================================================
--- 2 & 3 & 4. ROW LEVEL SECURITY + POLICIES
--- ============================================================
-
--- Helper used by every insert/update/delete policy below: is the
--- logged-in user's email in the editors table? Relies on the "any
--- authenticated user can read" policy on editors (below) rather than
--- SECURITY DEFINER, so it's just a plain, auditable SQL function.
 create or replace function public.is_editor()
 returns boolean
 language sql
@@ -170,12 +123,6 @@ begin
   end loop;
 end $$;
 
--- ============================================================
--- 5. REALTIME
--- ============================================================
--- The editors table is access control, not app data the UI displays, so
--- it's deliberately left off the realtime publication.
-
 do $$
 declare
   t text;
@@ -190,21 +137,7 @@ begin
   end loop;
 end $$;
 
--- ============================================================
--- 4 (cont'd). EDITOR
--- ============================================================
-
 insert into public.editors (email) values ('wanping0627@gmail.com');
-
--- ============================================================
--- 6. SAMPLE DATA
--- ============================================================
--- Same sample dataset the app seeds into a fresh browser (NATURE_SEED /
--- DESCRIPTION_SEED / DEBTORS_SEED in src/data/seed.ts): 5 Nature items,
--- 11 Description items, and 20 sample debtors per branch (100 total),
--- three of which carry a seeded write-off. Call For Return periods and
--- submissions start empty in the app too (created on demand), so there's
--- nothing to seed for those two tables.
 
 insert into public.reference_items (id, name, kind, active, nature_id) values
   ('nat-fees', 'Fees', 'nature', true, null),
@@ -547,9 +480,3 @@ insert into public.audit_log (id, entity_type, entity_id, date, actor, action) v
   ('log-debtor-gen-FIN-19-seed', 'debtor', 'debtor-gen-FIN-19', '2026-01-01', 'Finance', 'Sample data loaded'),
   ('log-debtor-gen-FIN-20-seed', 'debtor', 'debtor-gen-FIN-20', '2026-01-01', 'Finance', 'Sample data loaded');
 
-
--- ============================================================
--- Done. Point the app's Supabase client at this project and these table
--- names match src/context/AppContext.tsx's PersistedState shape 1:1
--- (minus personaId/simulatedToday/dataVersion, which stay client-side).
--- ============================================================
