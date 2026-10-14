@@ -10,7 +10,15 @@ export default defineConfig({
     baseURL: 'http://localhost:4173/debt/',
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'], storageState: 'playwright/.auth/user.json' },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
+    },
+  ],
   webServer: {
     command: 'npm run preview -- --port 4173 --strictPort',
     url: 'http://localhost:4173/debt/',

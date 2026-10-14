@@ -14,6 +14,7 @@ dist-ssr
 playwright-report
 test-results
 blob-report
+playwright/.auth
 
 # Editor directories and files
 .vscode/*
