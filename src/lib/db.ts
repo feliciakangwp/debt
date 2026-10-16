@@ -135,7 +135,7 @@ export async function fetchAllData(): Promise<LoadedData> {
     { data: submissionRows, error: submissionError },
   ] = await Promise.all([
     supabase.from('reference_items').select('*'),
-    supabase.from('debtors').select('*'),
+    supabase.from('debtors').select('*').order('created_at'),
     supabase.from('debtor_ar_entries').select('*'),
     supabase.from('debtor_write_offs').select('*'),
     supabase.from('debtor_payments').select('*'),
